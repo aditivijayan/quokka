@@ -91,7 +91,6 @@ template <typename problem_t> class RadhydroSimulation : public AMRSimulation<pr
 	using AMRSimulation<problem_t>::tempCeiling_;
 	using AMRSimulation<problem_t>::speedCeiling_;
 
-
 	SimulationData<problem_t> userData_;
 
 	static constexpr int nvarTotal_cc_ = Physics_Indices<problem_t>::nvarTotal_cc;
@@ -1028,7 +1027,7 @@ auto RadhydroSimulation<problem_t>::advanceHydroAtLevel(amrex::MultiFab &state_o
 			HydroSystem<problem_t>::SyncDualEnergy(stateFinal);
 		}
 
-		RadhydroSimulation<problem_t>::EnforceLimits(densityFloor_, pressureFloor_, speedCeiling_, tempCeiling_, tempFloor_,  stateFinal);
+		RadhydroSimulation<problem_t>::EnforceLimits(densityFloor_, pressureFloor_, speedCeiling_, tempCeiling_, tempFloor_, stateFinal);
 
 		if (do_reflux == 1) {
 			// increment flux registers
