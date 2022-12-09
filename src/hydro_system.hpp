@@ -30,6 +30,8 @@
 // this struct is specialized by the user application code
 //
 template <typename problem_t> struct HydroSystem_Traits {
+	static constexpr double gamma = 5. / 3.;     // default value
+	static constexpr double cs_isothermal = NAN; // only used when gamma = 1
 	// if true, reconstruct e_int instead of pressure
 	static constexpr bool reconstruct_eint = true;
 };
@@ -91,6 +93,10 @@ template <typename problem_t> class HydroSystem : public HyperbolicSystem<proble
 	static void AddFluxesRK2(amrex::MultiFab &Unew_mf, amrex::MultiFab const &U0_mf, amrex::MultiFab const &U1_mf, amrex::MultiFab const &rhs_mf, double dt,
 				 int nvars, amrex::iMultiFab &redoFlag_mf);
 
+	AMREX_GPU_DEVICE static auto 
+    GetGradFixedPotential(amrex::GpuArray<amrex::Real, AMREX_SPACEDIM> posvec)
+                                  -> amrex::GpuArray<amrex::Real, AMREX_SPACEDIM>;
+
 	static void AddInternalEnergyPdV(amrex::MultiFab &rhs_mf, amrex::MultiFab const &consVar_mf, amrex::GpuArray<amrex::Real, AMREX_SPACEDIM> dx,
 					 std::array<amrex::MultiFab, AMREX_SPACEDIM> const &faceVelArray);
 
@@ -111,11 +117,11 @@ template <typename problem_t> class HydroSystem : public HyperbolicSystem<proble
 
 	// C++ does not allow constexpr to be uninitialized, even in a templated
 	// class!
-	static constexpr double gamma_ = quokka::EOS_Traits<problem_t>::gamma;
-	static constexpr double cs_iso_ = quokka::EOS_Traits<problem_t>::cs_isothermal;
-	static constexpr auto is_eos_isothermal() -> bool { return (gamma_ == 1.0); }
-
+	static constexpr double gamma_ = HydroSystem_Traits<problem_t>::gamma;
+	static constexpr double cs_iso_ = HydroSystem_Traits<problem_t>::cs_isothermal;
 	static constexpr bool reconstruct_eint = HydroSystem_Traits<problem_t>::reconstruct_eint;
+
+	static constexpr auto is_eos_isothermal() -> bool { return (gamma_ == 1.0); }
 };
 
 template <typename problem_t> void HydroSystem<problem_t>::ConservedToPrimitive(amrex::MultiFab const &cons_mf, amrex::MultiFab &primVar_mf, const int nghost)
