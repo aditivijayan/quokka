@@ -154,7 +154,6 @@ template <typename problem_t> void AdvectionSimulation<problem_t>::computeBefore
 	// do nothing -- user should implement using problem-specific template specialization
 }
 
-
 template <typename problem_t> void AdvectionSimulation<problem_t>::computeAfterTimestep()
 {
 	// do nothing -- user should implement using problem-specific template specialization
