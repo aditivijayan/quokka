@@ -157,7 +157,7 @@ void RadhydroSimulation<NewProblem>::ErrorEst(int lev,
                                                 int /*ngrow*/) {
   // tag cells for refinement
 
-  const amrex::Real eta_threshold = 1.0; // gradient refinement threshold
+  const amrex::Real eta_threshold = 0.5; // gradient refinement threshold
  
   for (amrex::MFIter mfi(state_new_cc_[lev]); mfi.isValid(); ++mfi) {
     const amrex::Box &box = mfi.validbox();
@@ -188,11 +188,14 @@ void RadhydroSimulation<NewProblem>::ErrorEst(int lev,
         amrex::Real scal_zminus = state(i, j, k-1, Physics_Indices<NewProblem>::pscalarFirstIndex+2) / 
                                   state(i, j, k-1, HydroSystem<NewProblem>::density_index);
         
-        amrex::Real del_scalx   = std::max(std::abs(scal_xplus - scal_xyz), std::abs(scal_xminus - scal_xyz));
-        amrex::Real del_scaly   = std::max(std::abs(scal_yplus - scal_xyz), std::abs(scal_yminus - scal_xyz));
-        amrex::Real del_scalz   = std::max(std::abs(scal_zplus - scal_xyz), std::abs(scal_zminus - scal_xyz));
+        amrex::Real del_scalx   = std::abs(scal_xplus - scal_xminus)/(2.*dx[0]);
+        amrex::Real del_scaly   = std::abs(scal_yplus - scal_zminus)/(2.*dx[1]);
+        amrex::Real del_scalz   = std::abs(scal_zplus - scal_zminus)/(2.*dx[2]);
+        // std::max(std::abs(scal_xplus - scal_xyz), std::abs(scal_xminus - scal_xyz));
+        // amrex::Real del_scaly   = std::max(std::abs(scal_yplus - scal_xyz), std::abs(scal_yminus - scal_xyz));
+        // amrex::Real del_scalz   = std::max(std::abs(scal_zplus - scal_xyz), std::abs(scal_zminus - scal_xyz));
         
-        amrex::Real const grad_scal = (del_scalx * dx[0] +  del_scaly * dx[1] + del_scalz * dx[3])/scal_xyz;          
+        amrex::Real const grad_scal = (del_scalx * dx[0] +  del_scaly * dx[1] + del_scalz * dx[2])/scal_xyz;          
         
         if ((grad_scal > eta_threshold)) {
         tag(i, j, k) = amrex::TagBox::SET;
