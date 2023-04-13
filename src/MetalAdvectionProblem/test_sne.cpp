@@ -532,7 +532,7 @@ auto problem_main() -> int {
   // Problem initialization
   RadhydroSimulation<NewProblem> sim(boundaryConditions);
   sim.reconstructionOrder_ = 3; // 2=PLM, 3=PPM
-  sim.cflNumber_ = 0.35;         // *must* be less than 1/3 in 3D!
+  sim.cflNumber_ = 0.2;         // *must* be less than 1/3 in 3D!
   
 
   readCloudyData(sim.userData_.cloudyTables);
