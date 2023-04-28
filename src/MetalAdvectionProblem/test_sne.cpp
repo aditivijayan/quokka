@@ -58,7 +58,7 @@ template <> struct Physics_Traits<NewProblem> {
 
 template <> struct SimulationData<NewProblem> {
 
-  cloudy_tables cloudyTables;
+  // cloudy_tables cloudyTables;
   std::unique_ptr<amrex::TableData<Real, 3>> table_data;
 
 	std::unique_ptr<amrex::TableData<Real, 1>> blast_x;
@@ -181,13 +181,13 @@ void RadhydroSimulation<NewProblem>::ErrorEst(int lev,
 
 /*****Adding Cooling Terms*****/
 
-struct ODEUserData {
+/*struct ODEUserData {
   amrex::Real rho;
   cloudyGpuConstTables tables;
-};
+};*/
 
-AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE auto
-user_rhs(Real /*t*/, quokka::valarray<Real, 1> &y_data,
+/*AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE auto
+user_rhs(Real /*t*//*, quokka::valarray<Real, 1> &y_data,
          quokka::valarray<Real, 1> &y_rhs, void *user_data) -> int {
   // unpack user_data
   auto *udata = static_cast<ODEUserData *>(user_data);
@@ -261,7 +261,7 @@ void computeCooling(amrex::MultiFab &mf, const Real dt_in,
 
     AMREX_ASSERT(!state.contains_nan(0, state.nComp()));
   }
-} 
+} */
 
 void AddSupernova(amrex::MultiFab &mf, amrex::GpuArray<Real, AMREX_SPACEDIM> prob_lo, amrex::GpuArray<Real, AMREX_SPACEDIM> prob_hi,
 		  amrex::GpuArray<Real, AMREX_SPACEDIM> dx, SimulationData<NewProblem> const &userData, int level)
@@ -370,7 +370,7 @@ void RadhydroSimulation<NewProblem>::computeAfterLevelAdvance(int lev, amrex::Re
   
   AddSupernova(state_new_cc_[lev], prob_lo, prob_hi, dx, userData_, lev);
   
-  computeCooling(state_new_cc_[lev], dt_lev, userData_.cloudyTables);
+  // computeCooling(state_new_cc_[lev], dt_lev, userData_.cloudyTables);
 }
 
 template <> AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE auto
@@ -506,7 +506,7 @@ auto problem_main() -> int {
   sim.cflNumber_ = 0.35;         // *must* be less than 1/3 in 3D!
   
 
-  readCloudyData(sim.userData_.cloudyTables);
+  // readCloudyData(sim.userData_.cloudyTables);
   // initialize
   sim.setInitialConditions();
 
