@@ -157,7 +157,7 @@ void RadhydroSimulation<NewProblem>::ErrorEst(int lev,
                                                 int /*ngrow*/) {
   // tag cells for refinement
 
-  const amrex::Real eta_threshold = 1.e3; // gradient refinement threshold
+  const amrex::Real eta_threshold = 16.0; // gradient refinement threshold
  
   for (amrex::MFIter mfi(state_new_cc_[lev]); mfi.isValid(); ++mfi) {
     const amrex::Box &box = mfi.validbox();
@@ -167,35 +167,41 @@ void RadhydroSimulation<NewProblem>::ErrorEst(int lev,
     amrex::GpuArray<amrex::Real, AMREX_SPACEDIM> const &dx = geom[lev].CellSizeArray();
    
     amrex::ParallelFor(box, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept {
-     
-         amrex::Real scal_xyz   = state(i, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex+2)/
-                                  state(i, j, k, HydroSystem<NewProblem>::density_index) ;
 
-        amrex::Real scal_xplus  = state(i+1, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex+2)/
-                                  state(i+1, j, k, HydroSystem<NewProblem>::density_index)  ;
+        amrex::Real  delMoxy = Msun;
+        amrex::Real  Znorm = 1.e3;
+        amrex::Real  ZOinit = 8.6e-3;
+        amrex::Real rho_oxy_ = ZOinit *  state(i, j, k, HydroSystem<NewProblem>::density_index) ;
+         
+         amrex::Real scal_xyz   = ZOinit + ((delMoxy/Znorm) * state(i, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex+2)/
+                                                    state(i, j, k, HydroSystem<NewProblem>::density_index)) ;
 
-        amrex::Real scal_xminus = state(i-1, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex+2)/
-                                  state(i-1, j, k, HydroSystem<NewProblem>::density_index) ;
+        amrex::Real scal_xplus  = ZOinit + ((delMoxy/Znorm) * state(i+1, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex+2)/
+                                                              state(i+1, j, k, HydroSystem<NewProblem>::density_index) ) ;
 
-        amrex::Real scal_yplus  = state(i, j+1, k, Physics_Indices<NewProblem>::pscalarFirstIndex+2)/ 
-                                  state(i, j+1, k, HydroSystem<NewProblem>::density_index);
+        amrex::Real scal_xminus = ZOinit + ((delMoxy/Znorm) * state(i-1, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex+2)/
+                                                              state(i-1, j, k, HydroSystem<NewProblem>::density_index)) ;
 
-        amrex::Real scal_yminus = state(i, j-1, k, Physics_Indices<NewProblem>::pscalarFirstIndex+2) / 
-                                  state(i, j-1, k, HydroSystem<NewProblem>::density_index);
-        amrex::Real scal_zplus  = state(i, j, k+1, Physics_Indices<NewProblem>::pscalarFirstIndex+2)/ 
-                                  state(i, j, k+1, HydroSystem<NewProblem>::density_index);
+        amrex::Real scal_yplus  = ZOinit + ((delMoxy/Znorm) *  state(i, j+1, k, Physics_Indices<NewProblem>::pscalarFirstIndex+2)/ 
+                                                               state(i, j+1, k, HydroSystem<NewProblem>::density_index));
 
-        amrex::Real scal_zminus = state(i, j, k-1, Physics_Indices<NewProblem>::pscalarFirstIndex+2) / 
-                                  state(i, j, k-1, HydroSystem<NewProblem>::density_index);
+        amrex::Real scal_yminus = ZOinit + ((delMoxy/Znorm) *  state(i, j-1, k, Physics_Indices<NewProblem>::pscalarFirstIndex+2) / 
+                                                               state(i, j-1, k, HydroSystem<NewProblem>::density_index));
+
+        amrex::Real scal_zplus  = ZOinit + ((delMoxy/Znorm) *  state(i, j, k+1, Physics_Indices<NewProblem>::pscalarFirstIndex+2)/ 
+                                                               state(i, j, k+1, HydroSystem<NewProblem>::density_index));
+
+        amrex::Real scal_zminus = ZOinit + ((delMoxy/Znorm) *  state(i, j, k-1, Physics_Indices<NewProblem>::pscalarFirstIndex+2) / 
+                                                               state(i, j, k-1, HydroSystem<NewProblem>::density_index));
         
-        amrex::Real del_scalx   = std::abs(scal_xplus - scal_xminus)/(2.*dx[0]);
-        amrex::Real del_scaly   = std::abs(scal_yplus - scal_zminus)/(2.*dx[1]);
-        amrex::Real del_scalz   = std::abs(scal_zplus - scal_zminus)/(2.*dx[2]);
+        amrex::Real del_scalx   = std::abs(scal_xplus - scal_xminus)/2;
+        amrex::Real del_scaly   = std::abs(scal_yplus - scal_zminus)/2.;
+        amrex::Real del_scalz   = std::abs(scal_zplus - scal_zminus)/2.;
         // std::max(std::abs(scal_xplus - scal_xyz), std::abs(scal_xminus - scal_xyz));
         // amrex::Real del_scaly   = std::max(std::abs(scal_yplus - scal_xyz), std::abs(scal_yminus - scal_xyz));
         // amrex::Real del_scalz   = std::max(std::abs(scal_zplus - scal_xyz), std::abs(scal_zminus - scal_xyz));
         
-        amrex::Real const grad_scal = (del_scalx * dx[0] +  del_scaly * dx[1] + del_scalz * dx[2])/scal_xyz;          
+        amrex::Real const grad_scal = (del_scalx  +  del_scaly  + del_scalz )/scal_xyz;          
         
         if ((grad_scal > eta_threshold)) {
         tag(i, j, k) = amrex::TagBox::SET;
@@ -532,7 +538,7 @@ auto problem_main() -> int {
   // Problem initialization
   RadhydroSimulation<NewProblem> sim(boundaryConditions);
   sim.reconstructionOrder_ = 3; // 2=PLM, 3=PPM
-  sim.cflNumber_ = 0.2;         // *must* be less than 1/3 in 3D!
+  sim.cflNumber_ = 0.3;         // *must* be less than 1/3 in 3D!
   
 
   // readCloudyData(sim.userData_.cloudyTables);
