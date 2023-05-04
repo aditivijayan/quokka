@@ -93,7 +93,7 @@ template <typename problem_t> class RadhydroSimulation : public AMRSimulation<pr
 
 	SimulationData<problem_t> userData_;
 
-	int enableCooling_ = 0;
+	int enableCooling_ = 1;
 	quokka::cooling::cloudy_tables cloudyTables_;
 	std::string coolingTableFilename_{};
 
