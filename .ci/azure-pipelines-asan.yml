@@ -6,6 +6,12 @@
 trigger:
 - development
 
+pr:
+  autoCancel: true
+  branches:
+    include:
+    - development
+
 pool: avatar
 
 steps:
@@ -18,7 +24,7 @@ steps:
 - task: CMake@1
   displayName: 'Build Quokka'
   inputs:
-    cmakeArgs: '--build . --parallel 1'
+    cmakeArgs: '--build .'
 
 - task: CMake@1
   displayName: 'Run CTest'

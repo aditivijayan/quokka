@@ -14,7 +14,7 @@
 #include "test_radiation_marshak_asymptotic.hpp"
 
 struct SuOlsonProblemCgs {
-};					      // dummy type to allow compile-type polymorphism via template specialization
+}; // dummy type to allow compile-type polymorphism via template specialization
 
 constexpr double kappa = 300.0;		      // cm^-1 (opacity)
 constexpr double rho0 = 2.0879373766122384;   // g cm^-3 (matter density)
@@ -43,7 +43,8 @@ template <> struct Physics_Traits<SuOlsonProblemCgs> {
 	// cell-centred
 	static constexpr bool is_hydro_enabled = false;
 	static constexpr bool is_chemistry_enabled = false;
-	static constexpr int numPassiveScalars = 0;
+	static constexpr int numMassScalars = 0;		     // number of mass scalars
+	static constexpr int numPassiveScalars = numMassScalars + 0; // number of passive scalars
 	static constexpr bool is_radiation_enabled = true;
 	// face-centred
 	static constexpr bool is_mhd_enabled = false;
@@ -219,8 +220,8 @@ auto problem_main() -> int
 	amrex::Vector<amrex::BCRec> BCs_cc(nvars);
 	for (int n = 0; n < nvars; ++n) {
 		BCs_cc[n].setLo(0,
-				amrex::BCType::ext_dir);	    // custom (Marshak) x1
-		BCs_cc[n].setHi(0, amrex::BCType::foextrap);	    // extrapolate x1
+				amrex::BCType::ext_dir);     // custom (Marshak) x1
+		BCs_cc[n].setHi(0, amrex::BCType::foextrap); // extrapolate x1
 		for (int i = 1; i < AMREX_SPACEDIM; ++i) {
 			BCs_cc[n].setLo(i, amrex::BCType::int_dir); // periodic
 			BCs_cc[n].setHi(i, amrex::BCType::int_dir);
