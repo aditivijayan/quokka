@@ -89,30 +89,30 @@ enum class FillPatchType { fillpatch_class, fillpatch_function };
 template <typename problem_t> class AMRSimulation : public amrex::AmrCore
 {
       public:
-	amrex::Real maxDt_ = std::numeric_limits<double>::max();	// no limit by default
-	amrex::Real initDt_ = std::numeric_limits<double>::max();	// no limit by default
+	amrex::Real maxDt_ = std::numeric_limits<double>::max();  // no limit by default
+	amrex::Real initDt_ = std::numeric_limits<double>::max(); // no limit by default
 	amrex::Real constantDt_ = 0.0;
-	amrex::Vector<int> istep;					// which step?
-	amrex::Vector<int> nsubsteps;					// how many substeps on each level?
-	amrex::Vector<amrex::Real> tNew_;				// for state_new_cc_
-	amrex::Vector<amrex::Real> tOld_;				// for state_old_cc_
-	amrex::Vector<amrex::Real> dt_;					// timestep for each level
-	amrex::Vector<int> reductionFactor_;				// timestep reduction factor for each level
-	amrex::Real stopTime_ = 1.0;					// default
-	amrex::Real cflNumber_ = 0.3;					// default
-	amrex::Real dtToleranceFactor_ = 1.1;				// default
+	amrex::Vector<int> istep;	      // which step?
+	amrex::Vector<int> nsubsteps;	      // how many substeps on each level?
+	amrex::Vector<amrex::Real> tNew_;     // for state_new_cc_
+	amrex::Vector<amrex::Real> tOld_;     // for state_old_cc_
+	amrex::Vector<amrex::Real> dt_;	      // timestep for each level
+	amrex::Vector<int> reductionFactor_;  // timestep reduction factor for each level
+	amrex::Real stopTime_ = 1.0;	      // default
+	amrex::Real cflNumber_ = 0.3;	      // default
+	amrex::Real dtToleranceFactor_ = 1.1; // default
 	amrex::Long cycleCount_ = 0;
-	amrex::Long maxTimesteps_ = 1e4;				// default
-	amrex::Long maxWalltime_ = 0;					// default: no limit
-	int ascentInterval_ = -1;					// -1 == no in-situ renders with Ascent
-	int plotfileInterval_ = -1;					// -1 == no output
-	amrex::Real plotTimeInterval_ = -1.0;				// time interval for plt file
-	amrex::Real checkpointTimeInterval_ = -1.0;			// time interval for checkpoints
-	int checkpointInterval_ = -1;					// -1 == no output
-	int amrInterpMethod_ = 1;					// 0 == piecewise constant, 1 == lincc_interp
-	amrex::Real reltolPoisson_ = 1.0e-5;				// default
-	amrex::Real abstolPoisson_ = 1.0e-5;				// default (scaled by minimum RHS value)
-	int doPoissonSolve_ = 0;					// 1 == self-gravity enabled, 0 == disabled
+	amrex::Long maxTimesteps_ = 1e4;	    // default
+	amrex::Long maxWalltime_ = 0;		    // default: no limit
+	int ascentInterval_ = -1;		    // -1 == no in-situ renders with Ascent
+	int plotfileInterval_ = -1;		    // -1 == no output
+	amrex::Real plotTimeInterval_ = -1.0;	    // time interval for plt file
+	amrex::Real checkpointTimeInterval_ = -1.0; // time interval for checkpoints
+	int checkpointInterval_ = -1;		    // -1 == no output
+	int amrInterpMethod_ = 1;		    // 0 == piecewise constant, 1 == lincc_interp
+	amrex::Real reltolPoisson_ = 1.0e-5;	    // default
+	amrex::Real abstolPoisson_ = 1.0e-5;	    // default (scaled by minimum RHS value)
+	int doPoissonSolve_ = 0;		    // 1 == self-gravity enabled, 0 == disabled
 
 	amrex::Real densityFloor_ = 0.0;				// default
 	amrex::Real tempCeiling_ = std::numeric_limits<double>::max();	// default
@@ -442,7 +442,7 @@ template <typename problem_t> void AMRSimulation<problem_t>::readParameters()
 	// Default suppress_output = 0
 	pp.query("suppress_output", suppress_output);
 
-	// specify this on the commmand-line in order to restart from a checkpoint
+	// specify this on the command-line in order to restart from a checkpoint
 	// file
 	pp.query("restartfile", restart_chkfile);
 
@@ -572,7 +572,7 @@ template <typename problem_t> void AMRSimulation<problem_t>::computeTimestep()
 		dt_0 = std::min(dt_0, n_factor * dt_tmp[level]);
 		dt_0 = std::min(dt_0, maxDt_); // limit to maxDt_
 
-		if (tNew_[level] == 0.0) {     // first timestep
+		if (tNew_[level] == 0.0) { // first timestep
 			dt_0 = std::min(dt_0, initDt_);
 		}
 		if (constantDt_ > 0.0) { // use constant timestep if set
@@ -587,7 +587,7 @@ template <typename problem_t> void AMRSimulation<problem_t>::computeTimestep()
 		dt_global = std::min(dt_global, dt_tmp[level]);
 		dt_global = std::min(dt_global, maxDt_); // limit to maxDt_
 
-		if (tNew_[level] == 0.0) {		 // special case: first timestep
+		if (tNew_[level] == 0.0) { // special case: first timestep
 			dt_global = std::min(dt_global, initDt_);
 		}
 		if (constantDt_ > 0.0) { // special case: constant timestep
@@ -980,8 +980,8 @@ template <typename problem_t> auto AMRSimulation<problem_t>::timeStepWithSubcycl
 			flux_reg_[lev + 1]->Reflux(state_new_cc_[lev]);
 		}
 
-		AverageDownTo(lev);	       // average lev+1 down to lev
-		FixupState(lev);	       // fix any unphysical states created by reflux or averaging
+		AverageDownTo(lev); // average lev+1 down to lev
+		FixupState(lev);    // fix any unphysical states created by reflux or averaging
 
 		fillpatcher_[lev + 1].reset(); // because the data on lev have changed.
 	}
@@ -1035,7 +1035,7 @@ template <typename problem_t> auto AMRSimulation<problem_t>::getAmrInterpolater(
 {
 	amrex::MFInterpolater *mapper = nullptr;
 
-	if (amrInterpMethod_ == 0) {	    // piecewise-constant interpolation
+	if (amrInterpMethod_ == 0) { // piecewise-constant interpolation
 		mapper = &amrex::mf_pc_interp;
 	} else if (amrInterpMethod_ == 1) { // slope-limited linear interpolation
 		//  It has the following important properties:
@@ -1224,7 +1224,7 @@ template <typename problem_t> void AMRSimulation<problem_t>::setInitialCondition
 {
 	const int ncomp_cc = Physics_Indices<problem_t>::nvarTotal_cc;
 	const int nghost_cc = nghost_cc_;
-	// itterate over the domain
+	// iterate over the domain
 	for (amrex::MFIter iter(state_new_cc_[level]); iter.isValid(); ++iter) {
 		quokka::grid grid_elem(state_new_cc_[level].array(iter), iter.validbox(), geom[level].CellSizeArray(), geom[level].ProbLoArray(),
 				       geom[level].ProbHiArray(), quokka::centering::cc, quokka::direction::na);
@@ -1246,7 +1246,7 @@ template <typename problem_t> void AMRSimulation<problem_t>::setInitialCondition
 	const int nghost_fc = nghost_fc_;
 	// for each face-centering
 	for (int idim = 0; idim < AMREX_SPACEDIM; ++idim) {
-		// itterate over the domain and initialise data
+		// iterate over the domain and initialise data
 		for (amrex::MFIter iter(state_new_fc_[level][idim]); iter.isValid(); ++iter) {
 			quokka::grid grid_elem(state_new_fc_[level][idim].array(iter), iter.validbox(), geom[level].CellSizeArray(), geom[level].ProbLoArray(),
 					       geom[level].ProbHiArray(), quokka::centering::fc, static_cast<quokka::direction>(idim));
@@ -1299,7 +1299,7 @@ void AMRSimulation<problem_t>::MakeNewLevelFromScratch(int level, amrex::Real ti
 		}
 	}
 
-	// precalculate any required data (e.g., data table; as implimented by the
+	// precalculate any required data (e.g., data table; as implemented by the
 	// user) before initialising state variables
 	preCalculateInitialConditions();
 
@@ -1546,7 +1546,7 @@ void AMRSimulation<problem_t>::AverageFCToCC(amrex::MultiFab &mf_cc, const amrex
 	} else if (idim == 2) {
 		dk = 1;
 	}
-	// itterate over the domain
+	// iterate over the domain
 	auto const &state_cc = mf_cc.arrays();
 	auto const &state_fc = mf_fc.const_arrays();
 	amrex::ParallelFor(mf_cc, amrex::IntVect(AMREX_D_DECL(nGrow, nGrow, nGrow)), [=] AMREX_GPU_DEVICE(int boxidx, int i, int j, int k) {
@@ -1896,6 +1896,27 @@ template <typename problem_t> void AMRSimulation<problem_t>::ReadCheckpointFile(
 		ba.readFrom(is);
 		GotoNextLine(is);
 
+		/*Create New BoxArray at Level 0 for optimum load distribution*/
+		if (lev == 0) {
+			amrex::IntVect fac(2);
+			amrex::IntVect domlo{AMREX_D_DECL(0, 0, 0)};
+			amrex::IntVect domhi{AMREX_D_DECL(ba[ba.size() - 1].bigEnd(0), ba[ba.size() - 1].bigEnd(1), ba[ba.size() - 1].bigEnd(2))};
+			amrex::Box dom(domlo, domhi);
+			amrex::Box dom2 = amrex::refine(amrex::coarsen(dom, 2), 2);
+			for (int idim = 0; idim < AMREX_SPACEDIM; ++idim) {
+				if (dom.length(idim) != dom2.length(idim)) {
+					fac[idim] = 1;
+				}
+			}
+			amrex::BoxArray ba_lev0(amrex::coarsen(dom, fac));
+			ba_lev0.maxSize(max_grid_size[0] / fac);
+			ba_lev0.refine(fac);
+			// Boxes in ba have even number of cells in each direction
+			// unless the domain has odd number of cells in that direction.
+			ChopGrids(0, ba_lev0, amrex::ParallelDescriptor::NProcs());
+			ba = ba_lev0;
+		}
+
 		// create a distribution mapping
 		amrex::DistributionMapping dm{ba, amrex::ParallelDescriptor::NProcs()};
 
@@ -1907,7 +1928,6 @@ template <typename problem_t> void AMRSimulation<problem_t>::ReadCheckpointFile(
 		const int ncomp_cc = Physics_Indices<problem_t>::nvarTotal_cc;
 		const int nghost_cc = nghost_cc_;
 		state_old_cc_[lev].define(grids[lev], dmap[lev], ncomp_cc, nghost_cc);
-		// tmp[lev].define(grids[lev], dmap[lev], ncomp_cc, nghost_cc);
 		state_new_cc_[lev].define(grids[lev], dmap[lev], ncomp_cc, nghost_cc);
 		max_signal_speed_[lev].define(ba, dm, 1, nghost_cc);
 
@@ -1931,7 +1951,13 @@ template <typename problem_t> void AMRSimulation<problem_t>::ReadCheckpointFile(
 	// read in the MultiFab data
 	for (int lev = 0; lev <= finest_level; ++lev) {
 		// cell-centred
-		amrex::VisMF::Read(state_new_cc_[lev], amrex::MultiFabFileFullPrefix(lev, restart_chkfile, "Level_", "Cell"));
+		if (lev == 0) {
+			amrex::MultiFab tmp;
+			amrex::VisMF::Read(tmp, amrex::MultiFabFileFullPrefix(lev, restart_chkfile, "Level_", "Cell"));
+			state_new_cc_[0].ParallelCopy(tmp, 0, 0, Physics_Indices<problem_t>::nvarTotal_cc, nghost_cc_, nghost_cc_);
+		} else {
+			amrex::VisMF::Read(state_new_cc_[lev], amrex::MultiFabFileFullPrefix(lev, restart_chkfile, "Level_", "Cell"));
+		}
 		// face-centred
 		if constexpr (Physics_Indices<problem_t>::nvarTotal_fc > 0) {
 			for (int idim = 0; idim < AMREX_SPACEDIM; ++idim) {

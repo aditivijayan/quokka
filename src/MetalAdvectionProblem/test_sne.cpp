@@ -186,7 +186,7 @@ void RadhydroSimulation<NewProblem>::ErrorEst(int lev,
   cloudyGpuConstTables tables;
 };*/
 
-/*AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE auto
+AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE auto
 user_rhs(Real /*t*//*, quokka::valarray<Real, 1> &y_data,
          quokka::valarray<Real, 1> &y_rhs, void *user_data) -> int {
   // unpack user_data
@@ -204,7 +204,7 @@ user_rhs(Real /*t*//*, quokka::valarray<Real, 1> &y_data,
   return 0;
 }
 
-void computeCooling(amrex::MultiFab &mf, const Real dt_in,
+/*void computeCooling(amrex::MultiFab &mf, const Real dt_in,
                     cloudy_tables &cloudyTables) {
   BL_PROFILE("RadhydroSimulation::computeCooling()")
 
