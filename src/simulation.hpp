@@ -1899,10 +1899,10 @@ template <typename problem_t> void AMRSimulation<problem_t>::ReadCheckpointFile(
 		/*Create New BoxArray at Level 0 for optimum load distribution*/
 		if (lev == 0) {
 			amrex::IntVect fac(2);
-			amrex::IntVect domlo{AMREX_D_DECL(0, 0, 0)};
-			amrex::IntVect domhi{AMREX_D_DECL(ba[ba.size() - 1].bigEnd(0), ba[ba.size() - 1].bigEnd(1), ba[ba.size() - 1].bigEnd(2))};
-			amrex::Box dom(domlo, domhi);
-			amrex::Box dom2 = amrex::refine(amrex::coarsen(dom, 2), 2);
+			const amrex::IntVect domlo{AMREX_D_DECL(0, 0, 0)};
+			const amrex::IntVect domhi{AMREX_D_DECL(ba[ba.size() - 1].bigEnd(0), ba[ba.size() - 1].bigEnd(1), ba[ba.size() - 1].bigEnd(2))};
+			const amrex::Box dom(domlo, domhi);
+			const amrex::Box dom2 = amrex::refine(amrex::coarsen(dom, 2), 2);
 			for (int idim = 0; idim < AMREX_SPACEDIM; ++idim) {
 				if (dom.length(idim) != dom2.length(idim)) {
 					fac[idim] = 1;
@@ -1961,8 +1961,16 @@ template <typename problem_t> void AMRSimulation<problem_t>::ReadCheckpointFile(
 		// face-centred
 		if constexpr (Physics_Indices<problem_t>::nvarTotal_fc > 0) {
 			for (int idim = 0; idim < AMREX_SPACEDIM; ++idim) {
-				amrex::VisMF::Read(state_new_fc_[lev][idim], amrex::MultiFabFileFullPrefix(lev, restart_chkfile, "Level_",
-													   std::string("Face_") + quokka::face_dir_str[idim]));
+				if (lev == 0) {
+					amrex::MultiFab tmp;
+					amrex::VisMF::Read(tmp, amrex::MultiFabFileFullPrefix(lev, restart_chkfile, "Level_",
+											      std::string("Face_") + quokka::face_dir_str[idim]));
+					state_new_fc_[0][idim].ParallelCopy(tmp, 0, 0, Physics_Indices<problem_t>::nvarPerDim_fc, nghost_fc_, nghost_fc_);
+				} else {
+					amrex::VisMF::Read(
+					    state_new_fc_[lev][idim],
+					    amrex::MultiFabFileFullPrefix(lev, restart_chkfile, "Level_", std::string("Face_") + quokka::face_dir_str[idim]));
+				}
 			}
 		}
 	}
