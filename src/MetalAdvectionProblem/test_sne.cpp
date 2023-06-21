@@ -41,6 +41,15 @@ using amrex::Real;
 using namespace amrex;
 
 #define MAX 100
+#define z_star     (245.0 * pc)
+#define Sigma_star (168.0 * Msun/pc/pc)
+#define rho_dm     (2.5e-4 * Msun/pc/pc/pc)
+#define R0         (3.e3 * pc)
+
+#define sigma1     (7. * kmps)
+#define sigma2     (70. * kmps)
+#define rho01      (0.71 * Const_mH)
+#define rho02      (1.e-5 * rho01)
 
 struct NewProblem {};
 
@@ -94,16 +103,6 @@ void RadhydroSimulation<NewProblem>::setInitialConditionsOnGrid(quokka::grid gri
       amrex::Real const x = prob_lo[0] + (i + amrex::Real(0.5)) * dx[0];
 			amrex::Real const y = prob_lo[1] + (j + amrex::Real(0.5)) * dx[1];
       amrex::Real const z = prob_lo[2] + (k + amrex::Real(0.5)) * dx[2];
-
-      double z_star = 245.0 * pc;
-      double Sigma_star = 42.0 * Msun/pc/pc;
-      double rho_dm = 0.0064 * Msun/pc/pc/pc;
-      double R0     = 8.e3 * pc;
-
-      double sigma1 = 7. * kmps;
-      double sigma2 = 70. * kmps;
-      double rho01  = 2.85 * Const_mH;
-      double rho02  = 1.e-5 * 2.85 * Const_mH;
 
       /*Calculate DM Potential*/
       double prefac;
@@ -178,90 +177,6 @@ void RadhydroSimulation<NewProblem>::ErrorEst(int lev,
   }
 }
 
-
-/*****Adding Cooling Terms*****/
-
-/*struct ODEUserData {
-  amrex::Real rho;
-  cloudyGpuConstTables tables;
-};*/
-
-AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE auto
-user_rhs(Real /*t*//*, quokka::valarray<Real, 1> &y_data,
-         quokka::valarray<Real, 1> &y_rhs, void *user_data) -> int {
-  // unpack user_data
-  auto *udata = static_cast<ODEUserData *>(user_data);
-  Real rho = udata->rho;
-  cloudyGpuConstTables &tables = udata->tables;
-
-  // compute temperature (implicit solve, depends on composition)
-  Real Eint = y_data[0];
-  Real T =
-      ComputeTgasFromEgas(rho, Eint, HydroSystem<NewProblem>::gamma_, tables);
-    
-  // compute cooling function
-  y_rhs[0] = cloudy_cooling_function(rho, T, tables);
-  return 0;
-}
-
-/*void computeCooling(amrex::MultiFab &mf, const Real dt_in,
-                    cloudy_tables &cloudyTables) {
-  BL_PROFILE("RadhydroSimulation::computeCooling()")
-
-  const Real dt = dt_in;
-  const Real reltol_floor = 0.01;
-  const Real rtol = 1.0e-4; // not recommended to change this
-
-  auto tables = cloudyTables.const_tables();
-                    
-  // loop over all cells in MultiFab mf
-  for (amrex::MFIter iter(mf); iter.isValid(); ++iter) {
-    const amrex::Box &indexRange = iter.validbox();
-    auto const &state = mf.array(iter);
-
-    amrex::ParallelFor(indexRange, [=] AMREX_GPU_DEVICE(int i, int j,
-                                                        int k) noexcept {
-      const Real rho = state(i, j, k, HydroSystem<NewProblem>::density_index);
-      const Real x1Mom =
-          state(i, j, k, HydroSystem<NewProblem>::x1Momentum_index);
-      const Real x2Mom =
-          state(i, j, k, HydroSystem<NewProblem>::x2Momentum_index);
-      const Real x3Mom =
-          state(i, j, k, HydroSystem<NewProblem>::x3Momentum_index);
-      const Real Egas = state(i, j, k, HydroSystem<NewProblem>::energy_index);
-
-      Real Eint = RadSystem<NewProblem>::ComputeEintFromEgas(rho, x1Mom, x2Mom,
-                                                              x3Mom, Egas);
-
-      ODEUserData user_data{rho, tables};
-      quokka::valarray<Real, 1> y = {Eint};
-      quokka::valarray<Real, 1> abstol = {
-          reltol_floor * ComputeEgasFromTgas(rho, T_floor,
-                                             HydroSystem<NewProblem>::gamma_,
-                                             tables)};
-                                      
-      // do integration with RK2 (Heun's method)
-      int steps_taken = 0;
-      
-      rk_adaptive_integrate(user_rhs, 0, y, dt, &user_data, rtol, abstol, steps_taken);
-
-
-      const Real Egas_new = RadSystem<NewProblem>::ComputeEgasFromEint(
-          rho, x1Mom, x2Mom, x3Mom, y[0]);
-
-      const Real Eint_new = y[0];
-      const Real dEint = Eint_new - Eint;
-      Real Temp =
-      ComputeTgasFromEgas(rho, Eint_new, HydroSystem<NewProblem>::gamma_, tables);
-
-      state(i, j, k, HydroSystem<NewProblem>::energy_index) += dEint;
-      state(i, j, k, HydroSystem<NewProblem>::internalEnergy_index) += dEint;
-      
-    });
-
-    AMREX_ASSERT(!state.contains_nan(0, state.nComp()));
-  }
-} */
 
 void AddSupernova(amrex::MultiFab &mf, amrex::GpuArray<Real, AMREX_SPACEDIM> prob_lo, amrex::GpuArray<Real, AMREX_SPACEDIM> prob_hi,
 		  amrex::GpuArray<Real, AMREX_SPACEDIM> dx, SimulationData<NewProblem> const &userData, int level)
@@ -379,11 +294,6 @@ HydroSystem<NewProblem>::GetGradFixedPotential(amrex::GpuArray<amrex::Real, AMRE
  
      amrex::GpuArray<amrex::Real, AMREX_SPACEDIM> grad_potential;
 
-      double z_star = 245.0 * pc;
-      double Sigma_star = 42.0 * Msun/pc/pc;
-      double rho_dm = 0.0064 * Msun/pc/pc/pc;
-      double R0     = 8.e3 * pc;
-      
       double x = posvec[0];
      
      grad_potential[0] =  0.0;
