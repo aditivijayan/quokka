@@ -157,7 +157,11 @@ void RadhydroSimulation<NewProblem>::ErrorEst(int lev,
                                                 int /*ngrow*/) {
   // tag cells for refinement
 
+<<<<<<< HEAD
   const amrex::Real eta_threshold = 16.0; // gradient refinement threshold
+=======
+  const amrex::Real eta_threshold = 8.0; // gradient refinement threshold
+>>>>>>> 192d557b8a0855a19002e535cf499df0e8a0a71f
  
   for (amrex::MFIter mfi(state_new_cc_[lev]); mfi.isValid(); ++mfi) {
     const amrex::Box &box = mfi.validbox();
