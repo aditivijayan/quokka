@@ -44,8 +44,14 @@ using namespace amrex;
 
 struct NewProblem {};
 
+template <> struct quokka::EOS_Traits<NewProblem> {
+	static constexpr double gamma = 1.4;
+	static constexpr double mean_molecular_weight = 1.0;
+	static constexpr double boltzmann_constant = C::k_B;
+};
+
 template <> struct HydroSystem_Traits<NewProblem> {
-  static constexpr double gamma = 5./3.;
+  // static constexpr double gamma = 5./3.;
   static constexpr bool reconstruct_eint = true; //Set to true - temperature
 };
 template <> struct Physics_Traits<NewProblem> {
