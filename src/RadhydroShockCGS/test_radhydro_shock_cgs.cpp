@@ -22,39 +22,37 @@ struct ShockProblem {
 // parameters taken from Section 9.5 of Skinner et al. (2019)
 // [The Astrophysical Journal Supplement Series, 241:7 (27pp), 2019 March]
 
-constexpr double a_rad = 7.5646e-15;  // erg cm^-3 K^-4
-constexpr double c = 2.99792458e10;   // cm s^-1
-constexpr double k_B = 1.380658e-16;  // erg K^-1
-constexpr double m_H = 1.6726231e-24; // mass of hydrogen atom [g]
+constexpr double a_rad = 7.5646e-15; // erg cm^-3 K^-4
+constexpr double c = 2.99792458e10;  // cm s^-1
+constexpr double k_B = C::k_B;	     // erg K^-1
 
 // constexpr double P0 = 1.0e-4;	// equal to P_0 in dimensionless units
 // constexpr double sigma_a = 1.0e6;	// absorption cross section
 // constexpr double Mach0 = 3.0;
-constexpr double c_s0 = 1.73e7;			       // adiabatic sound speed [cm s^-1]
+constexpr double c_s0 = 1.73e7; // adiabatic sound speed [cm s^-1]
 
-constexpr double kappa = 577.0;			       // "opacity" == rho*kappa [cm^-1] (!!)
+constexpr double kappa = 577.0; // "opacity" == rho*kappa [cm^-1] (!!)
 constexpr double gamma_gas = (5. / 3.);
-constexpr double mu = m_H;			       // mean molecular weight [grams]
-constexpr double c_v = k_B / (mu * (gamma_gas - 1.0)); // specific heat [erg g^-1 K^-1]
+constexpr double c_v = k_B / ((C::m_p + C::m_e) * (gamma_gas - 1.0)); // specific heat [erg g^-1 K^-1]
 
-constexpr double T0 = 2.18e6;			       // K
-constexpr double rho0 = 5.69;			       // g cm^-3
-constexpr double v0 = 5.19e7;			       // cm s^-1
+constexpr double T0 = 2.18e6; // K
+constexpr double rho0 = 5.69; // g cm^-3
+constexpr double v0 = 5.19e7; // cm s^-1
 
-constexpr double T1 = 7.98e6;			       // K [7.98297e6]
-constexpr double rho1 = 17.1;			       // g cm^-3 [17.08233]
-constexpr double v1 = 1.73e7;			       // cm s^-1 [1.72875e7]
+constexpr double T1 = 7.98e6; // K [7.98297e6]
+constexpr double rho1 = 17.1; // g cm^-3 [17.08233]
+constexpr double v1 = 1.73e7; // cm s^-1 [1.72875e7]
 
-constexpr double chat = 10.0 * (v0 + c_s0);	       // reduced speed of light
+constexpr double chat = 10.0 * (v0 + c_s0); // reduced speed of light
 
-constexpr double Erad0 = a_rad * (T0 * T0 * T0 * T0);  // erg cm^-3
-constexpr double Egas0 = rho0 * c_v * T0;	       // erg cm^-3
-constexpr double Erad1 = a_rad * (T1 * T1 * T1 * T1);  // erg cm^-3
-constexpr double Egas1 = rho1 * c_v * T1;	       // erg cm^-3
+constexpr double Erad0 = a_rad * (T0 * T0 * T0 * T0); // erg cm^-3
+constexpr double Egas0 = rho0 * c_v * T0;	      // erg cm^-3
+constexpr double Erad1 = a_rad * (T1 * T1 * T1 * T1); // erg cm^-3
+constexpr double Egas1 = rho1 * c_v * T1;	      // erg cm^-3
 
-constexpr double shock_position = 0.0130;	       // 0.0132; // cm (shock position drifts to the right slightly during the simulation, so
-						       // we initialize slightly to the left...)
-constexpr double Lx = 0.01575;			       // cm
+constexpr double shock_position = 0.0130; // 0.0132; // cm (shock position drifts to the right slightly during the simulation, so
+					  // we initialize slightly to the left...)
+constexpr double Lx = 0.01575;		  // cm
 
 template <> struct RadSystem_Traits<ShockProblem> {
 	static constexpr double c_light = c;
@@ -65,7 +63,7 @@ template <> struct RadSystem_Traits<ShockProblem> {
 };
 
 template <> struct quokka::EOS_Traits<ShockProblem> {
-	static constexpr double mean_molecular_weight = m_H;
+	static constexpr double mean_molecular_weight = C::m_p + C::m_e;
 	static constexpr double boltzmann_constant = k_B;
 	static constexpr double gamma = gamma_gas;
 };
@@ -73,21 +71,29 @@ template <> struct quokka::EOS_Traits<ShockProblem> {
 template <> struct Physics_Traits<ShockProblem> {
 	// cell-centred
 	static constexpr bool is_hydro_enabled = true;
-	static constexpr bool is_chemistry_enabled = false;
-	static constexpr int numPassiveScalars = 0; // number of passive scalars
+	static constexpr int numMassScalars = 0;		     // number of mass scalars
+	static constexpr int numPassiveScalars = numMassScalars + 0; // number of passive scalars
 	static constexpr bool is_radiation_enabled = true;
 	// face-centred
 	static constexpr bool is_mhd_enabled = false;
+	static constexpr int nGroups = 1;
 };
 
-template <> AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE auto RadSystem<ShockProblem>::ComputePlanckOpacity(const double rho, const double /*Tgas*/) -> double
+template <>
+AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE auto RadSystem<ShockProblem>::ComputePlanckOpacity(const double rho, const double /*Tgas*/)
+    -> quokka::valarray<double, nGroups_>
 {
-	return (kappa / rho);
+	quokka::valarray<double, nGroups_> kappaPVec{};
+	for (int i = 0; i < nGroups_; ++i) {
+		kappaPVec[i] = kappa / rho;
+	}
+	return kappaPVec;
 }
 
-template <> AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE auto RadSystem<ShockProblem>::ComputeRosselandOpacity(const double rho, const double /*Tgas*/) -> double
+template <>
+AMREX_GPU_HOST_DEVICE auto RadSystem<ShockProblem>::ComputeFluxMeanOpacity(const double rho, const double /*Tgas*/) -> quokka::valarray<double, nGroups_>
 {
-	return (kappa / rho);
+	return ComputePlanckOpacity(rho, 0.0);
 }
 
 template <> AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE auto RadSystem<ShockProblem>::ComputeEddingtonFactor(double /*f*/) -> double
@@ -330,7 +336,7 @@ auto problem_main() -> int
 
 			double err_norm = 0.;
 			double sol_norm = 0.;
-			for (int i = 0; i < xs_exact.size(); ++i) {
+			for (size_t i = 0; i < xs_exact.size(); ++i) {
 				err_norm += std::abs(Trad_interp[i] - Trad_exact[i]);
 				sol_norm += std::abs(Trad_exact[i]);
 			}
@@ -348,10 +354,10 @@ auto problem_main() -> int
 #ifdef HAVE_PYTHON
 		std::vector<double> xs_scaled(xs.size());
 		std::vector<double> xs_exact_scaled(xs_exact.size());
-		for (int i = 0; i < xs.size(); ++i) {
+		for (size_t i = 0; i < xs.size(); ++i) {
 			xs_scaled.at(i) = xs.at(i) / Lx;
 		}
-		for (int i = 0; i < xs_exact.size(); ++i) {
+		for (size_t i = 0; i < xs_exact.size(); ++i) {
 			xs_exact_scaled.at(i) = xs_exact.at(i) / Lx;
 		}
 

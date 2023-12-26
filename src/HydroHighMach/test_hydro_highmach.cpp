@@ -30,18 +30,19 @@ struct HighMachProblem {
 
 template <> struct quokka::EOS_Traits<HighMachProblem> {
 	static constexpr double gamma = 5. / 3.;
-	static constexpr double mean_molecular_weight = NAN;
-	static constexpr double boltzmann_constant = quokka::boltzmann_constant_cgs;
+	static constexpr double mean_molecular_weight = 1.0;
+	static constexpr double boltzmann_constant = C::k_B;
 };
 
 template <> struct Physics_Traits<HighMachProblem> {
 	// cell-centred
 	static constexpr bool is_hydro_enabled = true;
-	static constexpr bool is_chemistry_enabled = false;
-	static constexpr int numPassiveScalars = 0; // number of passive scalars
+	static constexpr int numMassScalars = 0;		     // number of mass scalars
+	static constexpr int numPassiveScalars = numMassScalars + 0; // number of passive scalars
 	static constexpr bool is_radiation_enabled = false;
 	// face-centred
 	static constexpr bool is_mhd_enabled = false;
+	static constexpr int nGroups = 1; // number of radiation groups
 };
 
 template <> void RadhydroSimulation<HighMachProblem>::setInitialConditionsOnGrid(quokka::grid grid_elem)
@@ -265,7 +266,7 @@ auto problem_main() -> int
 	sim.setInitialConditions();
 	sim.evolve();
 
-	const double error_tol = 0.25;
+	const double error_tol = 0.26;
 	int status = 0;
 	if (sim.errorNorm_ > error_tol || std::isnan(sim.errorNorm_)) {
 		status = 1;

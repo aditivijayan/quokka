@@ -22,7 +22,7 @@
 #include "test_radiation_shadow.hpp"
 
 struct ShadowProblem {
-};				     // dummy type to allow compile-type polymorphism via template specialization
+}; // dummy type to allow compile-type polymorphism via template specialization
 
 constexpr double sigma0 = 0.1;	     // cm^-1 (opacity)
 constexpr double rho_bg = 1.0e-3;    // g cm^-3 (matter density)
@@ -34,8 +34,8 @@ constexpr double a_rad = 7.5646e-15; // erg cm^-3 K^-4
 constexpr double c = 2.99792458e10;  // cm s^-1
 
 template <> struct quokka::EOS_Traits<ShadowProblem> {
-	static constexpr double mean_molecular_weight = 10. * quokka::hydrogen_mass_cgs;
-	static constexpr double boltzmann_constant = quokka::boltzmann_constant_cgs;
+	static constexpr double mean_molecular_weight = 10. * C::m_u;
+	static constexpr double boltzmann_constant = C::k_B;
 	static constexpr double gamma = 5. / 3.;
 };
 
@@ -47,14 +47,18 @@ template <> struct RadSystem_Traits<ShadowProblem> {
 	static constexpr bool compute_v_over_c_terms = true;
 };
 
-template <> AMREX_GPU_HOST_DEVICE auto RadSystem<ShadowProblem>::ComputePlanckOpacity(const double rho, const double /*Tgas*/) -> double
+template <>
+AMREX_GPU_HOST_DEVICE auto RadSystem<ShadowProblem>::ComputePlanckOpacity(const double rho, const double /*Tgas*/) -> quokka::valarray<double, nGroups_>
 {
+	quokka::valarray<double, nGroups_> kappaPVec{};
 	const amrex::Real sigma = sigma0 * std::pow(rho / rho_bg, 2);
 	const amrex::Real kappa = sigma / rho; // specific opacity [cm^2 g^-1]
-	return kappa;
+	kappaPVec.fillin(kappa);
+	return kappaPVec;
 }
 
-template <> AMREX_GPU_HOST_DEVICE auto RadSystem<ShadowProblem>::ComputeRosselandOpacity(const double rho, const double Tgas) -> double
+template <>
+AMREX_GPU_HOST_DEVICE auto RadSystem<ShadowProblem>::ComputeFluxMeanOpacity(const double rho, const double Tgas) -> quokka::valarray<double, nGroups_>
 {
 	return ComputePlanckOpacity(rho, Tgas);
 }
@@ -214,7 +218,7 @@ auto problem_main() -> int
 		BCs_cc[n].setLo(0, amrex::BCType::ext_dir);  // left x1 -- streaming
 		BCs_cc[n].setHi(0, amrex::BCType::foextrap); // right x1 -- extrapolate
 		for (int i = 1; i < AMREX_SPACEDIM; ++i) {
-			if (isNormalComp(n, i)) {	     // reflect lower
+			if (isNormalComp(n, i)) { // reflect lower
 				BCs_cc[n].setLo(i, amrex::BCType::reflect_odd);
 			} else {
 				BCs_cc[n].setLo(i, amrex::BCType::reflect_even);

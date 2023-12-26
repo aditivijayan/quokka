@@ -33,8 +33,8 @@ constexpr double alpha_SuOlson = 4.0 * a_rad / eps_SuOlson;
 constexpr double T_initial = 1.0e4; // K
 
 template <> struct quokka::EOS_Traits<SuOlsonProblemCgs> {
-	static constexpr double mean_molecular_mass = quokka::hydrogen_mass_cgs;
-	static constexpr double boltzmann_constant = quokka::boltzmann_constant_cgs;
+	static constexpr double mean_molecular_weight = C::m_u;
+	static constexpr double boltzmann_constant = C::k_B;
 	static constexpr double gamma = 5. / 3.;
 };
 
@@ -49,34 +49,52 @@ template <> struct RadSystem_Traits<SuOlsonProblemCgs> {
 template <> struct Physics_Traits<SuOlsonProblemCgs> {
 	// cell-centred
 	static constexpr bool is_hydro_enabled = false;
-	static constexpr bool is_chemistry_enabled = false;
-	static constexpr int numPassiveScalars = 0; // number of passive scalars
+	static constexpr int numMassScalars = 0;		     // number of mass scalars
+	static constexpr int numPassiveScalars = numMassScalars + 0; // number of passive scalars
 	static constexpr bool is_radiation_enabled = true;
 	// face-centred
 	static constexpr bool is_mhd_enabled = false;
+	static constexpr int nGroups = 1; // number of radiation groups
 };
 
-template <> AMREX_GPU_HOST_DEVICE auto RadSystem<SuOlsonProblemCgs>::ComputePlanckOpacity(const double /*rho*/, const double /*Tgas*/) -> double
+template <>
+AMREX_GPU_HOST_DEVICE auto RadSystem<SuOlsonProblemCgs>::ComputePlanckOpacity(const double /*rho*/, const double /*Tgas*/) -> quokka::valarray<double, nGroups_>
 {
-	return kappa;
+	quokka::valarray<double, nGroups_> kappaPVec{};
+	for (int i = 0; i < nGroups_; ++i) {
+		kappaPVec[i] = kappa;
+	}
+	return kappaPVec;
 }
 
-template <> AMREX_GPU_HOST_DEVICE auto RadSystem<SuOlsonProblemCgs>::ComputeRosselandOpacity(const double /*rho*/, const double /*Tgas*/) -> double
+template <>
+AMREX_GPU_HOST_DEVICE auto RadSystem<SuOlsonProblemCgs>::ComputeFluxMeanOpacity(const double /*rho*/, const double /*Tgas*/)
+    -> quokka::valarray<double, nGroups_>
 {
-	return kappa;
+	return ComputePlanckOpacity(0.0, 0.0);
 }
 
-template <> AMREX_GPU_HOST_DEVICE auto quokka::EOS<SuOlsonProblemCgs>::ComputeTgasFromEint(const double /*rho*/, const double Egas) -> double
+static constexpr int nmscalars_ = Physics_Traits<SuOlsonProblemCgs>::numMassScalars;
+template <>
+AMREX_GPU_HOST_DEVICE auto quokka::EOS<SuOlsonProblemCgs>::ComputeTgasFromEint(const double /*rho*/, const double Egas,
+									       std::optional<amrex::GpuArray<amrex::Real, nmscalars_>> /*massScalars*/)
+    -> double
 {
 	return std::pow(4.0 * Egas / alpha_SuOlson, 1. / 4.);
 }
 
-template <> AMREX_GPU_HOST_DEVICE auto quokka::EOS<SuOlsonProblemCgs>::ComputeEintFromTgas(const double /*rho*/, const double Tgas) -> double
+template <>
+AMREX_GPU_HOST_DEVICE auto quokka::EOS<SuOlsonProblemCgs>::ComputeEintFromTgas(const double /*rho*/, const double Tgas,
+									       std::optional<amrex::GpuArray<amrex::Real, nmscalars_>> /*massScalars*/)
+    -> double
 {
 	return (alpha_SuOlson / 4.0) * std::pow(Tgas, 4);
 }
 
-template <> AMREX_GPU_HOST_DEVICE auto quokka::EOS<SuOlsonProblemCgs>::ComputeEintTempDerivative(const double /*rho*/, const double Tgas) -> double
+template <>
+AMREX_GPU_HOST_DEVICE auto quokka::EOS<SuOlsonProblemCgs>::ComputeEintTempDerivative(const double /*rho*/, const double Tgas,
+										     std::optional<amrex::GpuArray<amrex::Real, nmscalars_>> /*massScalars*/)
+    -> double
 {
 	// This is also known as the heat capacity, i.e.
 	// 		\del E_g / \del T = \rho c_v,
@@ -207,8 +225,8 @@ auto problem_main() -> int
 	constexpr int nvars = RadSystem<SuOlsonProblemCgs>::nvar_;
 	amrex::Vector<amrex::BCRec> BCs_cc(nvars);
 	for (int n = 0; n < nvars; ++n) {
-		BCs_cc[n].setLo(0, amrex::BCType::ext_dir);	    // custom (Marshak) x1
-		BCs_cc[n].setHi(0, amrex::BCType::foextrap);	    // extrapolate x1
+		BCs_cc[n].setLo(0, amrex::BCType::ext_dir);  // custom (Marshak) x1
+		BCs_cc[n].setHi(0, amrex::BCType::foextrap); // extrapolate x1
 		for (int i = 1; i < AMREX_SPACEDIM; ++i) {
 			BCs_cc[n].setLo(i, amrex::BCType::int_dir); // periodic
 			BCs_cc[n].setHi(i, amrex::BCType::int_dir);
@@ -300,7 +318,7 @@ auto problem_main() -> int
 		const double t = sim.tNew_[0];
 		const double xmax = c_light_cgs_ * t;
 		amrex::Print() << "diffusion length = " << xmax << std::endl;
-		for (int i = 0; i < xs_exact.size(); ++i) {
+		for (size_t i = 0; i < xs_exact.size(); ++i) {
 			if (xs_exact[i] < xmax) {
 				err_norm += std::abs(Trad_interp[i] - Trad_exact[i]);
 				sol_norm += std::abs(Trad_exact[i]);

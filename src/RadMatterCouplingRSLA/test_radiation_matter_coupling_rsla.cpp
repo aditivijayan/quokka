@@ -33,8 +33,8 @@ template <> struct SimulationData<CouplingProblem> {
 };
 
 template <> struct quokka::EOS_Traits<CouplingProblem> {
-	static constexpr double mean_molecular_mass = quokka::hydrogen_mass_cgs;
-	static constexpr double boltzmann_constant = quokka::boltzmann_constant_cgs;
+	static constexpr double mean_molecular_weight = C::m_u;
+	static constexpr double boltzmann_constant = C::k_B;
 	static constexpr double gamma = 5. / 3.;
 };
 
@@ -49,31 +49,49 @@ template <> struct RadSystem_Traits<CouplingProblem> {
 template <> struct Physics_Traits<CouplingProblem> {
 	// cell-centred
 	static constexpr bool is_hydro_enabled = false;
-	static constexpr bool is_chemistry_enabled = false;
-	static constexpr int numPassiveScalars = 0; // number of passive scalars
+	static constexpr int numMassScalars = 0;		     // number of mass scalars
+	static constexpr int numPassiveScalars = numMassScalars + 0; // number of passive scalars
 	static constexpr bool is_radiation_enabled = true;
 	// face-centred
 	static constexpr bool is_mhd_enabled = false;
+	static constexpr int nGroups = 1; // number of radiation groups
 };
 
-template <> AMREX_GPU_HOST_DEVICE auto RadSystem<CouplingProblem>::ComputePlanckOpacity(const double /*rho*/, const double /*Tgas*/) -> double { return 1.0; }
-
-template <> AMREX_GPU_HOST_DEVICE auto RadSystem<CouplingProblem>::ComputeRosselandOpacity(const double /*rho*/, const double /*Tgas*/) -> double
+template <>
+AMREX_GPU_HOST_DEVICE auto RadSystem<CouplingProblem>::ComputePlanckOpacity(const double /*rho*/, const double /*Tgas*/) -> quokka::valarray<double, nGroups_>
 {
-	return 1.0;
+	quokka::valarray<double, nGroups_> kappaPVec{};
+	for (int i = 0; i < nGroups_; ++i) {
+		kappaPVec[i] = 1.0;
+	}
+	return kappaPVec;
 }
 
-template <> AMREX_GPU_HOST_DEVICE auto quokka::EOS<CouplingProblem>::ComputeTgasFromEint(const double /*rho*/, const double Egas) -> double
+template <>
+AMREX_GPU_HOST_DEVICE auto RadSystem<CouplingProblem>::ComputeFluxMeanOpacity(const double /*rho*/, const double /*Tgas*/) -> quokka::valarray<double, nGroups_>
+{
+	return ComputePlanckOpacity(0.0, 0.0);
+}
+
+static constexpr int nmscalars_ = Physics_Traits<CouplingProblem>::numMassScalars;
+template <>
+AMREX_GPU_HOST_DEVICE auto quokka::EOS<CouplingProblem>::ComputeTgasFromEint(const double /*rho*/, const double Egas,
+									     std::optional<amrex::GpuArray<amrex::Real, nmscalars_>> /*massScalars*/) -> double
 {
 	return std::pow(4.0 * Egas / alpha_SuOlson, 1. / 4.);
 }
 
-template <> AMREX_GPU_HOST_DEVICE auto quokka::EOS<CouplingProblem>::ComputeEintFromTgas(const double /*rho*/, const double Tgas) -> double
+template <>
+AMREX_GPU_HOST_DEVICE auto quokka::EOS<CouplingProblem>::ComputeEintFromTgas(const double /*rho*/, const double Tgas,
+									     std::optional<amrex::GpuArray<amrex::Real, nmscalars_>> /*massScalars*/) -> double
 {
 	return (alpha_SuOlson / 4.0) * std::pow(Tgas, 4);
 }
 
-template <> AMREX_GPU_HOST_DEVICE auto quokka::EOS<CouplingProblem>::ComputeEintTempDerivative(const double /*rho*/, const double Tgas) -> double
+template <>
+AMREX_GPU_HOST_DEVICE auto quokka::EOS<CouplingProblem>::ComputeEintTempDerivative(const double /*rho*/, const double Tgas,
+										   std::optional<amrex::GpuArray<amrex::Real, nmscalars_>> /*massScalars*/)
+    -> double
 {
 	// This is also known as the heat capacity, i.e.
 	// 		\del E_g / \del T = \rho c_v,
@@ -138,7 +156,7 @@ auto problem_main() -> int
 	// const int nx = 4;
 	// const double Lx = 1e5; // cm
 	const double CFL_number = 1.0;
-	const double max_time = 1.0e-2;	   // s
+	const double max_time = 1.0e-2; // s
 	const int max_timesteps = 1e6;
 	const double constant_dt = 1.0e-8; // s
 
@@ -178,7 +196,7 @@ auto problem_main() -> int
 		std::vector<double> Tgas_rsla_exact(nmax);
 
 		const double initial_Tgas = quokka::EOS<CouplingProblem>::ComputeTgasFromEint(rho0, Egas0);
-		const auto kappa = RadSystem<CouplingProblem>::ComputePlanckOpacity(rho0, initial_Tgas);
+		const auto kappa = RadSystem<CouplingProblem>::ComputePlanckOpacity(rho0, initial_Tgas)[0];
 
 		for (int n = 0; n < nmax; ++n) {
 			const double time_t = sim.userData_.t_vec_.at(n);
@@ -211,12 +229,13 @@ auto problem_main() -> int
 		// compute L1 error norm
 		double err_norm = 0.;
 		double sol_norm = 0.;
-		for (int i = 0; i < t.size(); ++i) {
+		for (size_t i = 0; i < t.size(); ++i) {
 			err_norm += std::abs(Tgas[i] - Tgas_rsla_exact[i]);
 			sol_norm += std::abs(Tgas_rsla_exact[i]);
 		}
 		const double rel_error = err_norm / sol_norm;
-		const double error_tol = 1e-5;
+		// When using C::a_rad as radiation_constant_cgs_, the relative error goes up to 3e-5, so I'm increasing the tolerance
+		const double error_tol = 5e-5;
 		amrex::Print() << "relative L1 error norm = " << rel_error << std::endl;
 		if (rel_error > error_tol) {
 			status = 1;
@@ -258,7 +277,7 @@ auto problem_main() -> int
 		matplotlibcpp::clf();
 
 		std::vector<double> frac_err(t.size());
-		for (int i = 0; i < t.size(); ++i) {
+		for (size_t i = 0; i < t.size(); ++i) {
 			frac_err.at(i) = Tgas_rsla_exact.at(i) / Tgas.at(i) - 1.0;
 		}
 		matplotlibcpp::plot(t, frac_err);

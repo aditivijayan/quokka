@@ -9,6 +9,10 @@ on:
   merge_group:
     branches: [ development ]
 
+concurrency:
+  group: ${{ github.ref }}-${{ github.head_ref }}-cmake-linux
+  cancel-in-progress: true
+
 env:
   # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
   BUILD_TYPE: Release
@@ -22,7 +26,7 @@ jobs:
     runs-on: ubuntu-20.04
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
       with:
         submodules: true
         fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of sonarcloud analysis
@@ -64,7 +68,7 @@ jobs:
 
     - name: Upload test output
       if: always()
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
         name: test-results
         path: ${{github.workspace}}/tests

@@ -36,12 +36,12 @@ struct ShellProblem {
 // if false, use octant symmetry
 constexpr bool simulate_full_box = true;
 
-constexpr double a_rad = 7.5646e-15;  // erg cm^-3 K^-4
-constexpr double c = 2.99792458e10;   // cm s^-1
-constexpr double a0 = 2.0e5;	      // ('reference' sound speed) [cm s^-1]
-constexpr double chat = 860. * a0;    // cm s^-1
-constexpr double k_B = 1.380658e-16;  // erg K^-1
-constexpr double m_H = 1.6726231e-24; // mass of hydrogen atom [g]
+constexpr double a_rad = 7.5646e-15; // erg cm^-3 K^-4
+constexpr double c = 2.99792458e10;  // cm s^-1
+constexpr double a0 = 2.0e5;	     // ('reference' sound speed) [cm s^-1]
+constexpr double chat = 860. * a0;   // cm s^-1
+constexpr double k_B = C::k_B;	     // erg K^-1
+constexpr double m_H = C::m_u;	     // atomic mass unit
 constexpr double gamma_gas = 5. / 3.;
 
 template <> struct quokka::EOS_Traits<ShellProblem> {
@@ -65,30 +65,31 @@ template <> struct HydroSystem_Traits<ShellProblem> {
 template <> struct Physics_Traits<ShellProblem> {
 	// cell-centred
 	static constexpr bool is_hydro_enabled = true;
-	static constexpr bool is_chemistry_enabled = false;
-	static constexpr int numPassiveScalars = 0; // number of passive scalars
+	static constexpr int numMassScalars = 0;		     // number of mass scalars
+	static constexpr int numPassiveScalars = numMassScalars + 0; // number of passive scalars
 	static constexpr bool is_radiation_enabled = true;
 	// face-centred
 	static constexpr bool is_mhd_enabled = false;
+	static constexpr int nGroups = 1; // number of radiation groups
 };
 
-constexpr amrex::Real Msun = 2.0e33;					      // g
-constexpr amrex::Real parsec_in_cm = 3.086e18;				      // cm
+constexpr amrex::Real Msun = 2.0e33;	       // g
+constexpr amrex::Real parsec_in_cm = 3.086e18; // cm
 
-constexpr amrex::Real specific_luminosity = 2000.;			      // erg s^-1 g^-1
-constexpr amrex::Real GMC_mass = 1.0e6 * Msun;				      // g
-constexpr amrex::Real epsilon = 0.5;					      // dimensionless
-constexpr amrex::Real M_shell = (1 - epsilon) * GMC_mass;		      // g
-constexpr amrex::Real L_star = (epsilon * GMC_mass) * specific_luminosity;    // erg s^-1
+constexpr amrex::Real specific_luminosity = 2000.;			   // erg s^-1 g^-1
+constexpr amrex::Real GMC_mass = 1.0e6 * Msun;				   // g
+constexpr amrex::Real epsilon = 0.5;					   // dimensionless
+constexpr amrex::Real M_shell = (1 - epsilon) * GMC_mass;		   // g
+constexpr amrex::Real L_star = (epsilon * GMC_mass) * specific_luminosity; // erg s^-1
 
-constexpr amrex::Real r_0 = 5.0 * parsec_in_cm;				      // cm
-constexpr amrex::Real sigma_star = 0.3 * r_0;				      // cm
-constexpr amrex::Real H_shell = 0.3 * r_0;				      // cm
-constexpr amrex::Real kappa0 = 20.0;					      // specific opacity [cm^2 g^-1]
+constexpr amrex::Real r_0 = 5.0 * parsec_in_cm; // cm
+constexpr amrex::Real sigma_star = 0.3 * r_0;	// cm
+constexpr amrex::Real H_shell = 0.3 * r_0;	// cm
+constexpr amrex::Real kappa0 = 20.0;		// specific opacity [cm^2 g^-1]
 
 constexpr amrex::Real rho_0 = M_shell / ((4. / 3.) * M_PI * r_0 * r_0 * r_0); // g cm^-3
 
-constexpr amrex::Real P_0 = gamma_gas * rho_0 * (a0 * a0);		      // erg cm^-3
+constexpr amrex::Real P_0 = gamma_gas * rho_0 * (a0 * a0); // erg cm^-3
 constexpr double c_v = k_B / ((2.2 * m_H) * (gamma_gas - 1.0));
 
 template <>
@@ -123,15 +124,20 @@ void RadSystem<ShellProblem>::SetRadEnergySource(array_t &radEnergy, const amrex
 	});
 }
 
-template <> AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE auto RadSystem<ShellProblem>::ComputePlanckOpacity(const double /*rho*/, const double /*Tgas*/) -> double
+template <>
+AMREX_GPU_HOST_DEVICE auto RadSystem<ShellProblem>::ComputePlanckOpacity(const double /*rho*/, const double /*Tgas*/) -> quokka::valarray<double, nGroups_>
 {
-	return kappa0;
+	quokka::valarray<double, nGroups_> kappaPVec{};
+	for (int i = 0; i < nGroups_; ++i) {
+		kappaPVec[i] = kappa0;
+	}
+	return kappaPVec;
 }
 
 template <>
-AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE auto RadSystem<ShellProblem>::ComputeRosselandOpacity(const double /*rho*/, const double /*Tgas*/) -> double
+AMREX_GPU_HOST_DEVICE auto RadSystem<ShellProblem>::ComputeFluxMeanOpacity(const double /*rho*/, const double /*Tgas*/) -> quokka::valarray<double, nGroups_>
 {
-	return kappa0;
+	return ComputePlanckOpacity(0.0, 0.0);
 }
 
 // declare global variables
@@ -414,7 +420,7 @@ auto problem_main() -> int
 	// for this problem)
 	sim.reconstructionOrder_ = 2;
 	sim.radiationReconstructionOrder_ = 2;
-	sim.integratorOrder_ = 2;		   // RK2
+	sim.integratorOrder_ = 2; // RK2
 
 	constexpr amrex::Real t0_hydro = r_0 / a0; // seconds
 	sim.stopTime_ = 0.125 * t0_hydro;	   // 0.124 * t0_hydro;

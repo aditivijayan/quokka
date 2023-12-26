@@ -24,8 +24,8 @@ struct RTProblem {
 
 template <> struct quokka::EOS_Traits<RTProblem> {
 	static constexpr double gamma = 1.4;
-	static constexpr double mean_molecular_weight = quokka::hydrogen_mass_cgs;
-	static constexpr double boltzmann_constant = quokka::boltzmann_constant_cgs;
+	static constexpr double mean_molecular_weight = C::m_u;
+	static constexpr double boltzmann_constant = C::k_B;
 };
 
 template <> struct HydroSystem_Traits<RTProblem> {
@@ -35,11 +35,12 @@ template <> struct HydroSystem_Traits<RTProblem> {
 template <> struct Physics_Traits<RTProblem> {
 	// cell-centred
 	static constexpr bool is_hydro_enabled = true;
-	static constexpr bool is_chemistry_enabled = false;
-	static constexpr int numPassiveScalars = 1; // number of passive scalars
+	static constexpr int numMassScalars = 0;		     // number of mass scalars
+	static constexpr int numPassiveScalars = numMassScalars + 1; // number of passive scalars
 	static constexpr bool is_radiation_enabled = false;
 	// face-centred
 	static constexpr bool is_mhd_enabled = false;
+	static constexpr int nGroups = 1; // number of radiation groups
 };
 
 amrex::Real constexpr g_x = 0;

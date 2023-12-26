@@ -22,7 +22,7 @@
 #include "test_radiation_beam.hpp"
 
 struct BeamProblem {
-};				     // dummy type to allow compile-type polymorphism via template specialization
+}; // dummy type to allow compile-type polymorphism via template specialization
 
 constexpr double kappa0 = 0.0;	     // cm^2 g^-1 (specific opacity)
 constexpr double rho0 = 1.0;	     // g cm^-3 (matter density)
@@ -33,8 +33,8 @@ constexpr double a_rad = 7.5646e-15; // erg cm^-3 K^-4
 constexpr double c = 2.99792458e10;  // cm s^-1
 
 template <> struct quokka::EOS_Traits<BeamProblem> {
-	static constexpr double mean_molecular_weight = quokka::hydrogen_mass_cgs;
-	static constexpr double boltzmann_constant = quokka::boltzmann_constant_cgs;
+	static constexpr double mean_molecular_weight = C::m_u;
+	static constexpr double boltzmann_constant = C::k_B;
 	static constexpr double gamma = 5. / 3.;
 };
 
@@ -49,16 +49,29 @@ template <> struct RadSystem_Traits<BeamProblem> {
 template <> struct Physics_Traits<BeamProblem> {
 	// cell-centred
 	static constexpr bool is_hydro_enabled = false;
-	static constexpr bool is_chemistry_enabled = false;
-	static constexpr int numPassiveScalars = 0; // number of passive scalars
+	static constexpr int numMassScalars = 0;		     // number of mass scalars
+	static constexpr int numPassiveScalars = numMassScalars + 0; // number of passive scalars
 	static constexpr bool is_radiation_enabled = true;
 	// face-centred
 	static constexpr bool is_mhd_enabled = false;
+	static constexpr int nGroups = 1; // number of radiation groups
 };
 
-template <> AMREX_GPU_HOST_DEVICE auto RadSystem<BeamProblem>::ComputePlanckOpacity(const double /*rho*/, const double /*Tgas*/) -> double { return kappa0; }
+template <>
+AMREX_GPU_HOST_DEVICE auto RadSystem<BeamProblem>::ComputePlanckOpacity(const double /*rho*/, const double /*Tgas*/) -> quokka::valarray<double, nGroups_>
+{
+	quokka::valarray<double, nGroups_> kappaPVec{};
+	for (int g = 0; g < nGroups_; ++g) {
+		kappaPVec[g] = kappa0;
+	}
+	return kappaPVec;
+}
 
-template <> AMREX_GPU_HOST_DEVICE auto RadSystem<BeamProblem>::ComputeRosselandOpacity(const double /*rho*/, const double /*Tgas*/) -> double { return kappa0; }
+template <>
+AMREX_GPU_HOST_DEVICE auto RadSystem<BeamProblem>::ComputeFluxMeanOpacity(const double /*rho*/, const double /*Tgas*/) -> quokka::valarray<double, nGroups_>
+{
+	return ComputePlanckOpacity(0., 0.);
+}
 
 template <>
 AMREX_GPU_DEVICE AMREX_FORCE_INLINE void
@@ -276,10 +289,10 @@ auto problem_main() -> int
 	constexpr int nvars = RadSystem<BeamProblem>::nvar_;
 	amrex::Vector<amrex::BCRec> BCs_cc(nvars);
 	for (int n = 0; n < nvars; ++n) {
-		BCs_cc[n].setLo(0, amrex::BCType::ext_dir);	    // left x1 -- inflow
-		BCs_cc[n].setHi(0, amrex::BCType::foextrap);	    // right x1 -- extrapolate
-		BCs_cc[n].setLo(1, amrex::BCType::ext_dir);	    // left x2 -- inflow
-		BCs_cc[n].setHi(1, amrex::BCType::foextrap);	    // right x2 -- extrapolate
+		BCs_cc[n].setLo(0, amrex::BCType::ext_dir);  // left x1 -- inflow
+		BCs_cc[n].setHi(0, amrex::BCType::foextrap); // right x1 -- extrapolate
+		BCs_cc[n].setLo(1, amrex::BCType::ext_dir);  // left x2 -- inflow
+		BCs_cc[n].setHi(1, amrex::BCType::foextrap); // right x2 -- extrapolate
 		if (AMREX_SPACEDIM == 3) {
 			BCs_cc[n].setLo(2, amrex::BCType::int_dir); // periodic
 			BCs_cc[n].setHi(2, amrex::BCType::int_dir);
@@ -293,7 +306,7 @@ auto problem_main() -> int
 	sim.radiationCflNumber_ = CFL_number;
 	sim.radiationReconstructionOrder_ = 2; // PLM
 	sim.maxTimesteps_ = max_timesteps;
-	sim.plotfileInterval_ = 20;	       // for debugging
+	sim.plotfileInterval_ = 20; // for debugging
 
 	// initialize
 	sim.setInitialConditions();

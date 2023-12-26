@@ -10,4 +10,10 @@
 [submodule "extern/Microphysics"]
 	path = extern/Microphysics
 	url = https://github.com/psharda/Microphysics
-	branch = networks-changes-dev
+	branch = development
+[submodule "extern/yaml-cpp"]
+	path = extern/yaml-cpp
+	url = https://github.com/jbeder/yaml-cpp.git
+[submodule "extern/openPMD-api"]
+	path = extern/openPMD-api
+	url = https://github.com/openPMD/openPMD-api.git

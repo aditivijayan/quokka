@@ -6,9 +6,15 @@
 trigger:
 - development
 
+pr:
+  autoCancel: true
+  branches:
+    include:
+    - development
+
 jobs:
 - job: BuildAndTest
-  timeoutInMinutes: 120 # how long to run the job before automatically cancelling
+  timeoutInMinutes: 180 # how long to run the job before automatically cancelling
   pool: oracle-cloud
   steps:
   - task: CMake@1
@@ -19,12 +25,12 @@ jobs:
   - task: CMake@1
     displayName: 'Build Quokka'
     inputs:
-      cmakeArgs: '--build . --parallel 1'
+      cmakeArgs: '--build .'
 
   - task: CMake@1
     displayName: 'Run CTest'
     inputs:
-      cmakeArgs: '-E chdir . ctest -T Test --output-on-failure'
+      cmakeArgs: '-E chdir . ctest -j 2 -T Test --output-on-failure'
 
   - task: PublishTestResults@2
     inputs:

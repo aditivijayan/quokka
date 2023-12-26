@@ -17,18 +17,18 @@
 #include "test_radhydro_shock.hpp"
 
 struct ShockProblem {
-};				  // dummy type to allow compile-type polymorphism via template specialization
+}; // dummy type to allow compile-type polymorphism via template specialization
 
 constexpr double a_rad = 1.0e-4;  // equal to P_0 in dimensionless units
 constexpr double sigma_a = 1.0e6; // absorption cross section
 constexpr double Mach0 = 3.0;
 
-constexpr double c_s0 = 1.0;			       // adiabatic sound speed
-constexpr double c = 1732.0508075688772;	       // std::sqrt(3.0*sigma_a) * c_s0; //
-						       // dimensionless speed of light
-constexpr double k_B = (c_s0 * c_s0);		       // required to make temperature and sound speed consistent
+constexpr double c_s0 = 1.0;		 // adiabatic sound speed
+constexpr double c = 1732.0508075688772; // std::sqrt(3.0*sigma_a) * c_s0; //
+					 // dimensionless speed of light
+constexpr double k_B = (c_s0 * c_s0);	 // required to make temperature and sound speed consistent
 
-const double kappa = sigma_a * (c_s0 / c);	       // opacity [cm^-1]
+const double kappa = sigma_a * (c_s0 / c); // opacity [cm^-1]
 constexpr double gamma_gas = (5. / 3.);
 constexpr double mu = gamma_gas;		       // mean molecular weight (required s.t. c_s0 == 1)
 constexpr double c_v = k_B / (mu * (gamma_gas - 1.0)); // specific heat
@@ -70,21 +70,29 @@ template <> struct quokka::EOS_Traits<ShockProblem> {
 template <> struct Physics_Traits<ShockProblem> {
 	// cell-centred
 	static constexpr bool is_hydro_enabled = true;
-	static constexpr bool is_chemistry_enabled = false;
-	static constexpr int numPassiveScalars = 0; // number of passive scalars
+	static constexpr int numMassScalars = 0;		     // number of mass scalars
+	static constexpr int numPassiveScalars = numMassScalars + 0; // number of passive scalars
 	static constexpr bool is_radiation_enabled = true;
 	// face-centred
 	static constexpr bool is_mhd_enabled = false;
+	static constexpr int nGroups = 1; // number of radiation groups
 };
 
-template <> AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE auto RadSystem<ShockProblem>::ComputePlanckOpacity(const double rho, const double /*Tgas*/) -> double
+template <>
+AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE auto RadSystem<ShockProblem>::ComputePlanckOpacity(const double rho, const double /*Tgas*/)
+    -> quokka::valarray<double, nGroups_>
 {
-	return (kappa / rho);
+	quokka::valarray<double, nGroups_> kappaPVec{};
+	for (int i = 0; i < nGroups_; ++i) {
+		kappaPVec[i] = kappa / rho;
+	}
+	return kappaPVec;
 }
 
-template <> AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE auto RadSystem<ShockProblem>::ComputeRosselandOpacity(const double rho, const double /*Tgas*/) -> double
+template <>
+AMREX_GPU_HOST_DEVICE auto RadSystem<ShockProblem>::ComputeFluxMeanOpacity(const double rho, const double /*Tgas*/) -> quokka::valarray<double, nGroups_>
 {
-	return (kappa / rho);
+	return ComputePlanckOpacity(rho, 0.0);
 }
 
 template <> AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE auto RadSystem<ShockProblem>::ComputeEddingtonFactor(double /*f*/) -> double
@@ -330,7 +338,7 @@ auto problem_main() -> int
 
 		double err_norm = 0.;
 		double sol_norm = 0.;
-		for (int i = 0; i < xs_exact.size(); ++i) {
+		for (size_t i = 0; i < xs_exact.size(); ++i) {
 			err_norm += std::abs(Trad_interp[i] - Trad_exact[i]);
 			sol_norm += std::abs(Trad_exact[i]);
 		}

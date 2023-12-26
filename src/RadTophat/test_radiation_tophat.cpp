@@ -34,12 +34,12 @@ constexpr double T_hohlraum = 500. / kelvin_to_eV;	 // K [== 500 eV]
 constexpr double T_initial = 50. / kelvin_to_eV;	 // K [== 50 eV]
 constexpr double c_v = (1.0e15 * 1.0e-6 * kelvin_to_eV); // erg g^-1 K^-1
 
-constexpr double a_rad = 7.5646e-15;			 // erg cm^-3 K^-4
-constexpr double c = 2.99792458e10;			 // cm s^-1
+constexpr double a_rad = 7.5646e-15; // erg cm^-3 K^-4
+constexpr double c = 2.99792458e10;  // cm s^-1
 
 template <> struct quokka::EOS_Traits<TophatProblem> {
-	static constexpr double mean_molecular_weight = quokka::hydrogen_mass_cgs;
-	static constexpr double boltzmann_constant = quokka::boltzmann_constant_cgs;
+	static constexpr double mean_molecular_weight = C::m_u;
+	static constexpr double boltzmann_constant = C::k_B;
 	static constexpr double gamma = 5. / 3.;
 };
 
@@ -54,15 +54,19 @@ template <> struct RadSystem_Traits<TophatProblem> {
 template <> struct Physics_Traits<TophatProblem> {
 	// cell-centred
 	static constexpr bool is_hydro_enabled = false;
-	static constexpr bool is_chemistry_enabled = false;
-	static constexpr int numPassiveScalars = 0; // number of passive scalars
+	static constexpr int numMassScalars = 0;		     // number of mass scalars
+	static constexpr int numPassiveScalars = numMassScalars + 0; // number of passive scalars
 	static constexpr bool is_radiation_enabled = true;
 	// face-centred
 	static constexpr bool is_mhd_enabled = false;
+	static constexpr int nGroups = 1; // number of radiation groups
 };
 
-template <> AMREX_FORCE_INLINE AMREX_GPU_HOST_DEVICE auto RadSystem<TophatProblem>::ComputePlanckOpacity(const double rho, const double /*Tgas*/) -> double
+template <>
+AMREX_FORCE_INLINE AMREX_GPU_HOST_DEVICE auto RadSystem<TophatProblem>::ComputePlanckOpacity(const double rho, const double /*Tgas*/)
+    -> quokka::valarray<double, nGroups_>
 {
+	quokka::valarray<double, nGroups_> kappaPVec{};
 	amrex::Real kappa = 0.;
 	if (rho == rho_pipe) {
 		kappa = kappa_pipe;
@@ -71,34 +75,38 @@ template <> AMREX_FORCE_INLINE AMREX_GPU_HOST_DEVICE auto RadSystem<TophatProble
 	} else {
 		AMREX_ALWAYS_ASSERT_WITH_MESSAGE(true, "opacity not defined!");
 	}
-	return kappa;
+	kappaPVec.fillin(kappa);
+	return kappaPVec;
 }
 
-template <> AMREX_FORCE_INLINE AMREX_GPU_HOST_DEVICE auto RadSystem<TophatProblem>::ComputeRosselandOpacity(const double rho, const double /*Tgas*/) -> double
+template <>
+AMREX_FORCE_INLINE AMREX_GPU_HOST_DEVICE auto RadSystem<TophatProblem>::ComputeFluxMeanOpacity(const double rho, const double /*Tgas*/)
+    -> quokka::valarray<double, nGroups_>
 {
-	amrex::Real kappa = 0.;
-	if (rho == rho_pipe) {
-		kappa = kappa_pipe;
-	} else if (rho == rho_wall) {
-		kappa = kappa_wall;
-	} else {
-		AMREX_ALWAYS_ASSERT_WITH_MESSAGE(true, "opacity not defined!");
-	}
-	return kappa;
+	return ComputePlanckOpacity(rho, 0.);
 }
 
-template <> AMREX_FORCE_INLINE AMREX_GPU_HOST_DEVICE auto quokka::EOS<TophatProblem>::ComputeTgasFromEint(const double rho, const double Egas) -> double
+static constexpr int nmscalars_ = Physics_Traits<TophatProblem>::numMassScalars;
+template <>
+AMREX_FORCE_INLINE AMREX_GPU_HOST_DEVICE auto
+quokka::EOS<TophatProblem>::ComputeTgasFromEint(const double rho, const double Egas, std::optional<amrex::GpuArray<amrex::Real, nmscalars_>> /*massScalars*/)
+    -> double
 {
 	return Egas / (rho * c_v);
 }
 
-template <> AMREX_FORCE_INLINE AMREX_GPU_HOST_DEVICE auto quokka::EOS<TophatProblem>::ComputeEintFromTgas(const double rho, const double Tgas) -> double
+template <>
+AMREX_FORCE_INLINE AMREX_GPU_HOST_DEVICE auto
+quokka::EOS<TophatProblem>::ComputeEintFromTgas(const double rho, const double Tgas, std::optional<amrex::GpuArray<amrex::Real, nmscalars_>> /*massScalars*/)
+    -> double
 {
 	return rho * c_v * Tgas;
 }
 
 template <>
-AMREX_FORCE_INLINE AMREX_GPU_HOST_DEVICE auto quokka::EOS<TophatProblem>::ComputeEintTempDerivative(const double rho, const double /*Tgas*/) -> double
+AMREX_FORCE_INLINE AMREX_GPU_HOST_DEVICE auto
+quokka::EOS<TophatProblem>::ComputeEintTempDerivative(const double rho, const double /*Tgas*/,
+						      std::optional<amrex::GpuArray<amrex::Real, nmscalars_>> /*massScalars*/) -> double
 {
 	// This is also known as the heat capacity, i.e.
 	// 		\del E_g / \del T = \rho c_v,
@@ -268,7 +276,7 @@ auto problem_main() -> int
 		BCs_cc[n].setLo(0, amrex::BCType::ext_dir);  // left x1 -- Marshak
 		BCs_cc[n].setHi(0, amrex::BCType::foextrap); // right x1 -- extrapolate
 		for (int i = 1; i < AMREX_SPACEDIM; ++i) {
-			if (isNormalComp(n, i)) {	     // reflect lower
+			if (isNormalComp(n, i)) { // reflect lower
 				BCs_cc[n].setLo(i, amrex::BCType::reflect_odd);
 			} else {
 				BCs_cc[n].setLo(i, amrex::BCType::reflect_even);

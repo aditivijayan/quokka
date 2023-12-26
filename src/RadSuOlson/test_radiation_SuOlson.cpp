@@ -16,6 +16,7 @@
 #include "AMReX_SPACE.H"
 
 #include "fextract.hpp"
+#include "physics_info.hpp"
 #include "radiation_system.hpp"
 #include "test_radiation_SuOlson.hpp"
 #ifdef HAVE_PYTHON
@@ -55,33 +56,49 @@ template <> struct Physics_Traits<MarshakProblem> {
 	// cell-centred
 	static constexpr bool is_hydro_enabled = false;
 	static constexpr bool is_chemistry_enabled = false;
-	static constexpr int numPassiveScalars = 0; // number of passive scalars
+	static constexpr int numMassScalars = 0;		     // number of mass scalars
+	static constexpr int numPassiveScalars = numMassScalars + 0; // number of passive scalars
 	static constexpr bool is_radiation_enabled = true;
 	// face-centred
 	static constexpr bool is_mhd_enabled = false;
+	static constexpr int nGroups = 1; // number of radiation groups
 };
 
-template <> AMREX_GPU_HOST_DEVICE auto RadSystem<MarshakProblem>::ComputePlanckOpacity(const double rho, const double /*Tgas*/) -> double
+template <>
+AMREX_GPU_HOST_DEVICE auto RadSystem<MarshakProblem>::ComputePlanckOpacity(const double rho, const double /*Tgas*/) -> quokka::valarray<double, nGroups_>
 {
-	return (kappa / rho);
+	quokka::valarray<double, nGroups_> kappaVec{};
+	for (int g = 0; g < nGroups_; ++g) {
+		kappaVec[g] = kappa / rho;
+	}
+	return kappaVec;
 }
 
-template <> AMREX_GPU_HOST_DEVICE auto RadSystem<MarshakProblem>::ComputeRosselandOpacity(const double rho, const double /*Tgas*/) -> double
+template <>
+AMREX_GPU_HOST_DEVICE auto RadSystem<MarshakProblem>::ComputeFluxMeanOpacity(const double rho, const double Tgas) -> quokka::valarray<double, nGroups_>
 {
-	return (kappa / rho);
+	return ComputePlanckOpacity(rho, Tgas);
 }
 
-template <> AMREX_GPU_HOST_DEVICE auto quokka::EOS<MarshakProblem>::ComputeTgasFromEint(const double /*rho*/, const double Egas) -> double
+static constexpr int nmscalars_ = Physics_Traits<MarshakProblem>::numMassScalars;
+template <>
+AMREX_GPU_HOST_DEVICE auto quokka::EOS<MarshakProblem>::ComputeTgasFromEint(const double /*rho*/, const double Egas,
+									    std::optional<amrex::GpuArray<amrex::Real, nmscalars_>> /*massScalars*/) -> double
 {
 	return std::pow(4.0 * Egas / alpha_SuOlson, 1. / 4.);
 }
 
-template <> AMREX_GPU_HOST_DEVICE auto quokka::EOS<MarshakProblem>::ComputeEintFromTgas(const double /*rho*/, const double Tgas) -> double
+template <>
+AMREX_GPU_HOST_DEVICE auto quokka::EOS<MarshakProblem>::ComputeEintFromTgas(const double /*rho*/, const double Tgas,
+									    std::optional<amrex::GpuArray<amrex::Real, nmscalars_>> /*massScalars*/) -> double
 {
 	return (alpha_SuOlson / 4.0) * (Tgas * Tgas * Tgas * Tgas);
 }
 
-template <> AMREX_GPU_HOST_DEVICE auto quokka::EOS<MarshakProblem>::ComputeEintTempDerivative(const double /*rho*/, const double Tgas) -> double
+template <>
+AMREX_GPU_HOST_DEVICE auto quokka::EOS<MarshakProblem>::ComputeEintTempDerivative(const double /*rho*/, const double Tgas,
+										  std::optional<amrex::GpuArray<amrex::Real, nmscalars_>> /*massScalars*/)
+    -> double
 {
 	// This is also known as the heat capacity, i.e.
 	// 		\del E_g / \del T = \rho c_v,
@@ -105,8 +122,8 @@ void RadSystem<MarshakProblem>::SetRadEnergySource(array_t &radEnergySource, amr
 {
 
 	amrex::ParallelFor(indexRange, [=] AMREX_GPU_DEVICE(int i, int j, int k) {
-		amrex::Real const xl = (i + amrex::Real(0.)) * dx[0];
-		amrex::Real const xr = (i + amrex::Real(1.)) * dx[0];
+		amrex::Real const xl = (i + 0.) * dx[0];
+		amrex::Real const xr = (i + 1.) * dx[0];
 
 		amrex::Real dx_frac = 0.0;
 		if ((xl < x0) && (xr <= x0)) {
@@ -121,7 +138,7 @@ void RadSystem<MarshakProblem>::SetRadEnergySource(array_t &radEnergySource, amr
 		if (time < t0) {
 			src = S * vol_frac;
 		}
-		radEnergySource(i, j, k) = src;
+		radEnergySource(i, j, k, 0) = src;
 	});
 }
 
@@ -273,7 +290,7 @@ auto problem_main() -> int
 		std::vector<double> Tgas_exact_10(Egas_transport_exact_10p0);
 		std::vector<double> Tgas_exact_1(Egas_transport_exact_10p0);
 
-		for (int i = 0; i < xs_exact.size(); ++i) {
+		for (size_t i = 0; i < xs_exact.size(); ++i) {
 			Trad_exact_10.at(i) = std::pow(Erad_transport_exact_10p0.at(i) / a_rad, 1. / 4.);
 			Trad_exact_1.at(i) = std::pow(Erad_transport_exact_1p0.at(i) / a_rad, 1. / 4.);
 
@@ -290,7 +307,7 @@ auto problem_main() -> int
 		// compute L1 error norm
 		double err_norm = 0.;
 		double sol_norm = 0.;
-		for (int i = 0; i < xs_exact.size(); ++i) {
+		for (size_t i = 0; i < xs_exact.size(); ++i) {
 			err_norm += std::abs(Tgas_numerical_interp[i] - Tgas_exact_10[i]);
 			sol_norm += std::abs(Tgas_exact_10[i]);
 		}

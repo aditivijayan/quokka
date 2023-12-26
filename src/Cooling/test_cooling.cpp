@@ -30,23 +30,24 @@ using amrex::Real;
 struct CoolingTest {
 }; // dummy type to allow compile-type polymorphism via template specialization
 
-constexpr double m_H = quokka::hydrogen_mass_cgs;
+constexpr double m_H = C::m_u;
 constexpr double seconds_in_year = 3.154e7;
 
 template <> struct quokka::EOS_Traits<CoolingTest> {
 	static constexpr double gamma = 5. / 3.; // default value
-	static constexpr double mean_molecular_weight = quokka::hydrogen_mass_cgs;
-	static constexpr double boltzmann_constant = quokka::boltzmann_constant_cgs;
+	static constexpr double mean_molecular_weight = C::m_u;
+	static constexpr double boltzmann_constant = C::k_B;
 };
 
 template <> struct Physics_Traits<CoolingTest> {
 	// cell-centred
 	static constexpr bool is_hydro_enabled = true;
-	static constexpr bool is_chemistry_enabled = false;
-	static constexpr int numPassiveScalars = 0; // number of passive scalars
+	static constexpr int numMassScalars = 0;		     // number of mass scalars
+	static constexpr int numPassiveScalars = numMassScalars + 0; // number of passive scalars
 	static constexpr bool is_radiation_enabled = false;
 	// face-centred
 	static constexpr bool is_mhd_enabled = false;
+	static constexpr int nGroups = 1; // number of radiation groups
 };
 
 template <> struct SimulationData<CoolingTest> {
@@ -130,7 +131,7 @@ template <> void RadhydroSimulation<CoolingTest>::setInitialConditionsOnGrid(quo
 		Real xmom = 0;
 		Real ymom = 0;
 		Real zmom = 0;
-		Real const P = 4.0e4 * quokka::boltzmann_constant_cgs; // erg cm^-3
+		Real const P = 4.0e4 * C::k_B; // erg cm^-3
 		Real Eint = (quokka::EOS_Traits<CoolingTest>::gamma - 1.) * P;
 
 		Real const Egas = RadSystem<CoolingTest>::ComputeEgasFromEint(rho, xmom, ymom, zmom, Eint);
@@ -196,12 +197,12 @@ auto problem_main() -> int
 	constexpr int ncomp_cc = Physics_Indices<CoolingTest>::nvarTotal_cc;
 	amrex::Vector<amrex::BCRec> BCs_cc(ncomp_cc);
 	for (int n = 0; n < ncomp_cc; ++n) {
-		BCs_cc[n].setLo(0, amrex::BCType::int_dir);  // periodic
+		BCs_cc[n].setLo(0, amrex::BCType::int_dir); // periodic
 		BCs_cc[n].setHi(0, amrex::BCType::int_dir);
 		BCs_cc[n].setLo(1, amrex::BCType::foextrap); // extrapolate
 		BCs_cc[n].setHi(1, amrex::BCType::ext_dir);  // Dirichlet
 #if AMREX_SPACEDIM == 3
-		BCs_cc[n].setLo(2, amrex::BCType::int_dir);  // periodic
+		BCs_cc[n].setLo(2, amrex::BCType::int_dir); // periodic
 		BCs_cc[n].setHi(2, amrex::BCType::int_dir);
 #endif
 	}

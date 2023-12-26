@@ -7,16 +7,20 @@ on:
     # The branches below must be a subset of the branches above
     branches: [ development ]
 
+concurrency:
+  group: ${{ github.ref }}-${{ github.head_ref }}-cmake-macos
+  cancel-in-progress: true
+
 env:
   # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
   BUILD_TYPE: Release
 
 jobs:
   build:
-    runs-on: macos-12
+    runs-on: macos-13
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
       with:
         submodules: true
         fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of sonarcloud analysis
@@ -27,7 +31,9 @@ jobs:
       run: cmake -E make_directory ${{runner.workspace}}/build
 
     - name: Install Homebrew dependencies
-      run: brew install python3 openmpi hdf5
+      run: |
+        brew install python3 openmpi hdf5 || true
+        brew link --overwrite python@3.11
 
     - name: Install pip dependencies
       run: python3 -m pip install --user numpy matplotlib
@@ -58,7 +64,7 @@ jobs:
 
     - name: Upload test output
       if: always()
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
         name: test-results
         path: ${{github.workspace}}/tests
