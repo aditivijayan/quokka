@@ -490,8 +490,6 @@ auto problem_main() -> int {
 
   amrex::ParmParse const pp("metprob");
 	// initial condition parameters
-	pp.query("rho0", ::rho0);   // initial density [g/cc]
-	pp.query("Tgas0", ::Tgas0); // initial temperature [K]
   pp.query("pressure0", ::P_outflow); // initial temperature [K]
 
 	// compute derived parameters
