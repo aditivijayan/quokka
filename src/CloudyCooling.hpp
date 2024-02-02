@@ -36,7 +36,8 @@ namespace quokka::cooling
 
 constexpr double cloudy_H_mass_fraction = 1. / (1. + 0.1 * 3.971);
 constexpr double X = cloudy_H_mass_fraction;
-constexpr double Z = 0.02; // metal fraction by mass
+constexpr double Zbg = 0.1; //background metallicity in units of Zsolar
+constexpr double Z = Zbg * 0.02; // metal fraction by mass
 constexpr double Y = 1. - X - Z;
 constexpr double mean_metals_A = 16.; // mean atomic weight of metals
 
@@ -93,7 +94,7 @@ AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE auto cloudy_cooling_function(Real const
 
 	const double netLambda_prim = FastMath::pow10(logPrimHeat) - FastMath::pow10(logPrimCool);
 	const double netLambda_metals = FastMath::pow10(logMetalHeat) - FastMath::pow10(logMetalCool);
-	const double netLambda = netLambda_prim + netLambda_metals;
+	const double netLambda = netLambda_prim + Zbg* netLambda_metals;
 
 	// multiply by the square of H mass density (**NOT number density**)
 	double Edot = (rhoH * rhoH) * netLambda;
