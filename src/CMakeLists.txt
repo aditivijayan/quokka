@@ -172,17 +172,23 @@ add_subdirectory(RadhydroShockCGS)
 add_subdirectory(RadhydroShockMultigroup)
 add_subdirectory(RadhydroUniformAdvecting)
 add_subdirectory(RadhydroPulse)
+add_subdirectory(RadhydroPulseGrey)
+add_subdirectory(RadhydroPulseMG)
 
-add_subdirectory(ODEIntegration)
-add_subdirectory(Cooling)
-add_subdirectory(ShockCloud)
-add_subdirectory(PassiveScalar)
-add_subdirectory(FCQuantities)
-add_subdirectory(SphericalCollapse)
-add_subdirectory(NSCBC)
-add_subdirectory(StarCluster)
-add_subdirectory(PrimordialChem)
 add_subdirectory(BinaryOrbitCIC)
+<<<<<<< HEAD
 add_subdirectory(MetalAdvectionProblem)
 
 
+=======
+add_subdirectory(Cooling)
+add_subdirectory(FCQuantities)
+add_subdirectory(NSCBC)
+add_subdirectory(ODEIntegration)
+add_subdirectory(PassiveScalar)
+add_subdirectory(PrimordialChem)
+add_subdirectory(PopIII)
+add_subdirectory(ShockCloud)
+add_subdirectory(StarCluster)
+add_subdirectory(SphericalCollapse)
+>>>>>>> 6aca86475ce95a8e9cec545e01dfae1edd52639c
