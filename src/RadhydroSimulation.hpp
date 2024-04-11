@@ -502,6 +502,8 @@ template <typename problem_t> void RadhydroSimulation<problem_t>::addStrangSplit
 template <typename problem_t>
 void RadhydroSimulation<problem_t>::addStrangSplitSourcesWithBuiltin(amrex::MultiFab &state, int lev, amrex::Real time, amrex::Real dt)
 {
+	// compute user-specified sources
+	addStrangSplitSources(state, lev, time, dt);
 	if (enableCooling_ == 1) {
 		// compute cooling
 		quokka::cooling::computeCooling<problem_t>(state, dt, cloudyTables_, tempFloor_);
@@ -514,8 +516,8 @@ void RadhydroSimulation<problem_t>::addStrangSplitSourcesWithBuiltin(amrex::Mult
 	}
 #endif
 
-	// compute user-specified sources
-	addStrangSplitSources(state, lev, time, dt);
+	// // compute user-specified sources
+	// addStrangSplitSources(state, lev, time, dt);
 }
 
 template <typename problem_t>
