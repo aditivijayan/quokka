@@ -134,7 +134,7 @@ void RadhydroSimulation<NewProblem>::setInitialConditionsOnGrid(quokka::grid gri
       
       double Phigas = 2.* 3.1415 * Const_G * Sigma_gas * std::abs(z);
 
-      double Phitot = Phist + Phidm + Phigas;
+      double Phitot = Phist + Phidm; // + Phigas;
 
 			double rho, rho_disk, rho_halo;
              rho_disk = rho01 * std::exp(-Phitot/std::pow(sigma1,2.0)) ;
@@ -364,7 +364,7 @@ HydroSystem<NewProblem>::GetGradFixedPotential(amrex::GpuArray<amrex::Real, AMRE
        double z      = posvec[2];
        grad_potential[2]  = 2.* 3.1415 * Const_G * rho_dm * std::pow(R0,2) * (2.* z/std::pow(R0,2))/(1. + std::pow(z,2)/std::pow(R0,2));
        grad_potential[2] += 2.* 3.1415 * Const_G * Sigma_star * (z/z_star) * (std::pow(1. + z*z/(z_star*z_star), -0.5));
-       grad_potential[2] += 2.* 3.1415 * Const_G * Sigma_gas * std::abs(z)/z; //gas potential
+      //  grad_potential[2] += 2.* 3.1415 * Const_G * Sigma_gas * std::abs(z)/z; //gas potential
     #endif
 
 return grad_potential;
