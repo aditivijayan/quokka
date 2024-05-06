@@ -364,7 +364,7 @@ HydroSystem<NewProblem>::GetGradFixedPotential(amrex::GpuArray<amrex::Real, AMRE
        double z      = posvec[2];
        grad_potential[2]  = 2.* 3.1415 * Const_G * rho_dm * std::pow(R0,2) * (2.* z/std::pow(R0,2))/(1. + std::pow(z,2)/std::pow(R0,2));
        grad_potential[2] += 2.* 3.1415 * Const_G * Sigma_star * (z/z_star) * (std::pow(1. + z*z/(z_star*z_star), -0.5));
-   //    grad_potential[2] += 2.* 3.1415 * Const_G * Sigma_gas * std::abs(z)/z; //gas potential
+      //  grad_potential[2] += 2.* 3.1415 * Const_G * Sigma_gas * std::abs(z)/z; //gas potential
     #endif
 
 return grad_potential;
@@ -497,8 +497,8 @@ auto problem_main() -> int {
 		for (int i = 0; i < AMREX_SPACEDIM; ++i) {
 				// outflowing boundary conditions
         if(i==2){
-				 BCs_cc[n].setLo(i, amrex::BCType::ext_dir);
-				 BCs_cc[n].setHi(i, amrex::BCType::ext_dir);
+				 BCs_cc[n].setLo(i, amrex::BCType::foextrap);
+				 BCs_cc[n].setHi(i, amrex::BCType::foextrap);
         }
         else{
            BCs_cc[n].setLo(i, amrex::BCType::int_dir); // periodic
