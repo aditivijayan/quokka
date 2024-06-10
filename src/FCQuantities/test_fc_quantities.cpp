@@ -78,32 +78,33 @@ template <> void RadhydroSimulation<FCQuantities>::setInitialConditionsOnGrid(qu
 	amrex::GpuArray<amrex::Real, AMREX_SPACEDIM> prob_lo = grid_elem.prob_lo_;
 	const amrex::Array4<double> &state = grid_elem.array_;
 	const amrex::Box &indexRange = grid_elem.indexRange_;
-	const quokka::centering cen = grid_elem.cen_;
+
+	const int ncomp_cc = Physics_Indices<FCQuantities>::nvarTotal_cc;
+	// loop over the grid and set the initial condition
+	amrex::ParallelFor(indexRange, [=] AMREX_GPU_DEVICE(int i, int j, int k) {
+		for (int n = 0; n < ncomp_cc; ++n) {
+			state(i, j, k, n) = 0; // fill unused quantities with zeros
+		}
+		computeWaveSolution(i, j, k, state, dx, prob_lo);
+	});
+}
+
+template <> void RadhydroSimulation<FCQuantities>::setInitialConditionsOnGridFaceVars(quokka::grid grid_elem)
+{
+	// extract grid information
+	const amrex::Array4<double> &state = grid_elem.array_;
+	const amrex::Box &indexRange = grid_elem.indexRange_;
 	const quokka::direction dir = grid_elem.dir_;
 
-	if (cen == quokka::centering::cc) {
-		const int ncomp_cc = Physics_Indices<FCQuantities>::nvarTotal_cc;
-		// loop over the grid and set the initial condition
-		amrex::ParallelFor(indexRange, [=] AMREX_GPU_DEVICE(int i, int j, int k) {
-			for (int n = 0; n < ncomp_cc; ++n) {
-				state(i, j, k, n) = 0; // fill unused quantities with zeros
-			}
-			computeWaveSolution(i, j, k, state, dx, prob_lo);
-		});
-	} else if (cen == quokka::centering::fc) {
-		if (dir == quokka::direction::x) {
-			amrex::ParallelFor(indexRange, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept {
-				state(i, j, k, MHDSystem<FCQuantities>::bfield_index) = 1.0 + (i % 2);
-			});
-		} else if (dir == quokka::direction::y) {
-			amrex::ParallelFor(indexRange, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept {
-				state(i, j, k, MHDSystem<FCQuantities>::bfield_index) = 2.0 + (j % 2);
-			});
-		} else if (dir == quokka::direction::z) {
-			amrex::ParallelFor(indexRange, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept {
-				state(i, j, k, MHDSystem<FCQuantities>::bfield_index) = 3.0 + (k % 2);
-			});
-		}
+	if (dir == quokka::direction::x) {
+		amrex::ParallelFor(
+		    indexRange, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept { state(i, j, k, MHDSystem<FCQuantities>::bfield_index) = 1.0 + (i % 2); });
+	} else if (dir == quokka::direction::y) {
+		amrex::ParallelFor(
+		    indexRange, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept { state(i, j, k, MHDSystem<FCQuantities>::bfield_index) = 2.0 + (j % 2); });
+	} else if (dir == quokka::direction::z) {
+		amrex::ParallelFor(
+		    indexRange, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept { state(i, j, k, MHDSystem<FCQuantities>::bfield_index) = 3.0 + (k % 2); });
 	}
 }
 
@@ -114,14 +115,14 @@ void checkMFs(amrex::Vector<amrex::Array<amrex::MultiFab, AMREX_SPACEDIM>> const
 	for (int level = 0; level < state1.size(); ++level) {
 		for (int idim = 0; idim < AMREX_SPACEDIM; ++idim) {
 			// initialise MF
-			const BoxArray &ba = state1[level][idim].boxArray();
-			const DistributionMapping &dm = state1[level][idim].DistributionMap();
+			const amrex::BoxArray &ba = state1[level][idim].boxArray();
+			const amrex::DistributionMapping &dm = state1[level][idim].DistributionMap();
 			int ncomp = state1[level][idim].nComp();
 			int ngrow = state1[level][idim].nGrow();
-			MultiFab mf_diff(ba, dm, ncomp, ngrow);
+			amrex::MultiFab mf_diff(ba, dm, ncomp, ngrow);
 			// compute difference between two MFs (at level)
-			MultiFab::Copy(mf_diff, state1[level][idim], 0, 0, ncomp, ngrow);
-			MultiFab::Subtract(mf_diff, state2[level][idim], 0, 0, ncomp, ngrow);
+			amrex::MultiFab::Copy(mf_diff, state1[level][idim], 0, 0, ncomp, ngrow);
+			amrex::MultiFab::Subtract(mf_diff, state2[level][idim], 0, 0, ncomp, ngrow);
 			// compute error (summed over each component)
 			for (int icomp = 0; icomp < Physics_Indices<FCQuantities>::nvarPerDim_fc; ++icomp) {
 				err += mf_diff.norm1(icomp);
@@ -159,7 +160,7 @@ auto problem_main() -> int
 	amrex::Vector<amrex::Array<amrex::MultiFab, AMREX_SPACEDIM>> const &state_new_fc_write = sim_write.getNewMF_fc();
 	amrex::Print() << "\n";
 
-	RadhydroSimulation<FCQuantities> sim_restart(BCs_cc);
+	RadhydroSimulation<FCQuantities> sim_restart(BCs_cc, BCs_fc);
 	sim_restart.setChkFile("chk00000");
 	sim_restart.setInitialConditions();
 	amrex::Vector<amrex::Array<amrex::MultiFab, AMREX_SPACEDIM>> const &state_new_fc_restart = sim_restart.getNewMF_fc();
