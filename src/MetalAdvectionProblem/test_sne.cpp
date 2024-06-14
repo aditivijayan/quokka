@@ -29,7 +29,6 @@
 #include "AMReX_RandomEngine.H"
 #include "AMReX_Random.H"
 
-#include "CloudyCooling.hpp"
 #include "ODEIntegrate.hpp"
 #include "RadhydroSimulation.hpp"
 #include "hydro_system.hpp"
@@ -276,7 +275,7 @@ void AddSupernova(amrex::MultiFab &mf, amrex::GpuArray<Real, AMREX_SPACEDIM> pro
         if(x0<0.5*dx[0] && y0<0.5*dx[1] && z0< 0.5*dx[2] ) {
         state(i, j, k, HydroSystem<NewProblem>::energy_index)         +=   rho_eint_blast; 
         state(i, j, k, HydroSystem<NewProblem>::internalEnergy_index) +=    rho_eint_blast; 
-        state(i, j, k, HydroSystem<NewProblem>::density_index)         +=   rho_blast;
+        //state(i, j, k, HydroSystem<NewProblem>::density_index)         +=   rho_blast;
         state(i, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex+1)+=  1.e3/cell_vol;
         // printf("The location of SN=%d,%d,%d\n",i, j, k);
         // printf("SN added at level=%d\n", level);
