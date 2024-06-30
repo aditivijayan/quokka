@@ -23,15 +23,19 @@ constexpr double  Mu       = 0.6;
 constexpr double  kmps     = 1.e5; 
 constexpr double  Const_mH = 1.67e-24;
 constexpr double  kb       = 1.3807e-16;
-constexpr double z_star = 245.0 * pc;
+
+/***-----------Change these parameters for different galaxies-------***/
+constexpr double z_star     = 245.0 * pc;
 constexpr double Sigma_star = 208.0 * Msun/pc/pc;
 constexpr double Sigma_gas = 50.0 * Msun/pc/pc;
+constexpr double rho_dm = 2.4e-2 * Msun/pc/pc/pc;
+constexpr double R0     = 4.e3 * pc;
+/***********----------------------------------***************/
+
 constexpr double  ks_sigma_sfr    = 1.5e-4/yr_to_s/kpc/kpc;
 constexpr double  hscale          = 150. * pc;
 constexpr double  sqrtpi          = 1.772453;
 constexpr double  probSN_prefac   = ks_sigma_sfr/(hscale*sqrtpi);
-constexpr double rho_dm = 2.4e-2 * Msun/pc/pc/pc;
-constexpr double R0     = 4.e3 * pc;
 constexpr double sigma1 = 7. * kmps;
 constexpr double sigma2 = 70. * kmps;
 constexpr double rho01  = 2.85 * Const_mH;
