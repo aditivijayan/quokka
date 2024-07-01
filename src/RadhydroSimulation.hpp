@@ -1179,34 +1179,12 @@ auto RadhydroSimulation<problem_t>::advanceHydroAtLevel(amrex::MultiFab &state_o
 		// prevent vacuum
 		HydroSystem<problem_t>::EnforceLimits(densityFloor_, pressureFloor_, speedCeiling_, tempCeiling_, tempFloor_, stateNew);
 
-
-				for (amrex::MFIter iter(stateNew); iter.isValid(); ++iter) {
-        const amrex::Box &indexRange = iter.validbox();
-		auto const state = stateNew.const_array(iter);
-       amrex::ParallelFor(indexRange, [=] AMREX_GPU_DEVICE( int i, int j, int k) noexcept {
-				   double eint = state(i, j, k, HydroSystem<problem_t>::internalEnergy_index);
-				   if(i==82 && j==74 && k==505){
-					// printf("2. Before SyncDual Eint i,j,k=%d, %d, %d, %.2e\n", i,j,k, eint);
-				   }
-                });
-			}
-
 		if (useDualEnergy_ == 1) {
 			// sync internal energy (requires positive density)
 			HydroSystem<problem_t>::SyncDualEnergy(stateNew);
 		}
 
 
-		for (amrex::MFIter iter(stateNew); iter.isValid(); ++iter) {
-        const amrex::Box &indexRange = iter.validbox();
-		auto const state = stateNew.const_array(iter);
-       amrex::ParallelFor(indexRange, [=] AMREX_GPU_DEVICE( int i, int j, int k) noexcept {
-				   double eint = state(i, j, k, HydroSystem<problem_t>::internalEnergy_index);
-				   if(i==82 && j==74 && k==505){
-					// printf("3. After SyncDual Eint i,j,k=%d, %d, %d, %.2e\n", i,j,k, eint);
-				   }
-                });
-			}
 
 
 		if (do_reflux == 1) {
