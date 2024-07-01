@@ -815,11 +815,11 @@ void HydroSystem<problem_t>::EnforceLimits(amrex::Real const densityFloor, amrex
 		Eint = state[bx](i, j, k, internalEnergy_index);
 		amrex::Real auxTemp = quokka::EOS<problem_t>::ComputeTgasFromEint(rho, Eint, massScalars);
 
-		if (auxTemp > tempCeiling) {
-			state[bx](i, j, k, internalEnergy_index) =
-			    quokka::EOS<problem_t>::ComputeEintFromTgas(state[bx](i, j, k, density_index), tempCeiling, massScalars);
-			state[bx](i, j, k, energy_index) = Ekin + state[bx](i, j, k, internalEnergy_index);
-		}
+		// if (auxTemp > tempCeiling) {
+		// 	state[bx](i, j, k, internalEnergy_index) =
+		// 	    quokka::EOS<problem_t>::ComputeEintFromTgas(state[bx](i, j, k, density_index), tempCeiling, massScalars);
+		// 	state[bx](i, j, k, energy_index) = Ekin + state[bx](i, j, k, internalEnergy_index);
+		// }
 
 	/*	if (auxTemp < tempFloor) {
 			state[bx](i, j, k, internalEnergy_index) =
@@ -868,7 +868,6 @@ void HydroSystem<problem_t>::AddInternalEnergyPdV(amrex::MultiFab &rhs_mf, amrex
 		// add P dV term to rhs array
 		rhs[bx](i, j, k, internalEnergy_index) += -Pgas * div_v;	
 		
-	});
 }
 
 template <typename problem_t> void HydroSystem<problem_t>::SyncDualEnergy(amrex::MultiFab &consVar_mf)
