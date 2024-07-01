@@ -29,7 +29,7 @@
 #include "AMReX_RandomEngine.H"
 #include "AMReX_Random.H"
 
-#include "CloudyCooling.hpp"
+
 #include "ODEIntegrate.hpp"
 #include "RadhydroSimulation.hpp"
 #include "hydro_system.hpp"
@@ -240,9 +240,10 @@ void AddSupernova(amrex::MultiFab &mf, amrex::GpuArray<Real, AMREX_SPACEDIM> pro
 	// inject energy into cells with stochastic sampling
 	BL_PROFILE("RadhydroSimulation::Addsupernova()")
 
+  const int sn_cell = 2;
 	const Real cell_vol = AMREX_D_TERM(dx[0], *dx[1], *dx[2]); // cm^3
-	const Real rho_eint_blast = userData.E_blast / cell_vol;   // ergs cm^-3
-  const Real rho_blast = userData.M_ejecta / cell_vol;   // g cm^-3
+	const Real rho_eint_blast = userData.E_blast / cell_vol / sn_cell ;   // ergs cm^-3
+  const Real rho_blast = userData.M_ejecta / cell_vol / sn_cell ;   // g cm^-3
 	const int cum_sn = userData.SN_counter_cumulative;
 
 	const Real Lx = prob_hi[0] - prob_lo[0];
@@ -263,7 +264,7 @@ void AddSupernova(amrex::MultiFab &mf, amrex::GpuArray<Real, AMREX_SPACEDIM> pro
 			const Real yc = prob_lo[1] + static_cast<Real>(j) * dx[1] + 0.5 * dx[1];
 			const Real zc = prob_lo[2] + static_cast<Real>(k) * dx[2] + 0.5 * dx[2];
 
-			for (int n = 0; n < np; ++n) {
+			for (int n = 0; n < 1; ++n) {
 				Real x0 = NAN;
 				Real y0 = NAN;
 				Real z0 = NAN;
@@ -273,16 +274,17 @@ void AddSupernova(amrex::MultiFab &mf, amrex::GpuArray<Real, AMREX_SPACEDIM> pro
         y0 = std::abs(yc -py(n));
         z0 = std::abs(zc -pz(n));
 
-        if(x0<0.5*dx[0] && y0<0.5*dx[1] && z0< 0.5*dx[2] ) {
+        if(x0<(sn_cell *dx[0]) && y0<(sn_cell *dx[1]) && z0< (sn_cell *dx[2]) ) {
+        // if(i==32 & j==32 & k==32){
+        state(i, j, k, HydroSystem<NewProblem>::density_index)         +=   rho_blast; 
         state(i, j, k, HydroSystem<NewProblem>::energy_index)         +=   rho_eint_blast; 
         state(i, j, k, HydroSystem<NewProblem>::internalEnergy_index) +=    rho_eint_blast; 
-        state(i, j, k, HydroSystem<NewProblem>::density_index)         +=   rho_blast;
         state(i, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex+1)+=  1.e3/cell_vol;
         // printf("The location of SN=%d,%d,%d\n",i, j, k);
         // printf("SN added at level=%d\n", level);
         // printf("The total number of SN gone off=%d\n", cum_sn);
         Rpds = 14. * std::pow(state(i, j, k, HydroSystem<NewProblem>::density_index)/Const_mH, -3./7.);
-        printf("Rpds = %.2e pc\n", Rpds);
+        // printf("Rpds = %.2e pc\n", Rpds);
         }
 			}
 		});
@@ -513,7 +515,7 @@ auto problem_main() -> int {
   // initial condition parameters
   
   sim.reconstructionOrder_ = 3; // 2=PLM, 3=PPM
-  sim.cflNumber_ = 0.25;         // *must* be less than 1/3 in 3D!
+  sim.cflNumber_ = 0.3;         // *must* be less than 1/3 in 3D!
   
 
   // readCloudyData(sim.userData_.cloudyTables);
