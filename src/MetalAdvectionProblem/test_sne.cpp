@@ -29,10 +29,6 @@
 #include "AMReX_RandomEngine.H"
 #include "AMReX_Random.H"
 
-<<<<<<< HEAD
-=======
-
->>>>>>> ad71e79da9a414e83d970f40ce9ff1020e3ba00f
 #include "ODEIntegrate.hpp"
 #include "RadhydroSimulation.hpp"
 #include "hydro_system.hpp"
@@ -275,18 +271,11 @@ void AddSupernova(amrex::MultiFab &mf, amrex::GpuArray<Real, AMREX_SPACEDIM> pro
         y0 = std::abs(yc -py(n));
         z0 = std::abs(zc -pz(n));
 
-<<<<<<< HEAD
-        if(x0<0.5*inj_size*dx[0] && y0<0.5*inj_size*dx[1] && z0< 0.5*inj_size*dx[2] ) {
-        state(i, j, k, HydroSystem<NewProblem>::energy_index)          +=   rho_eint_blast; 
-        state(i, j, k, HydroSystem<NewProblem>::internalEnergy_index)  +=   rho_eint_blast; 
-        state(i, j, k, HydroSystem<NewProblem>::density_index)         +=   rho_blast;
-=======
         if(x0<(sn_cell *dx[0]) && y0<(sn_cell *dx[1]) && z0< (sn_cell *dx[2]) ) {
         // if(i==32 & j==32 & k==32){
         state(i, j, k, HydroSystem<NewProblem>::density_index)         +=   rho_blast; 
         state(i, j, k, HydroSystem<NewProblem>::energy_index)         +=   rho_eint_blast; 
         state(i, j, k, HydroSystem<NewProblem>::internalEnergy_index) +=    rho_eint_blast; 
->>>>>>> ad71e79da9a414e83d970f40ce9ff1020e3ba00f
         state(i, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex+1)+=  1.e3/cell_vol;
         // printf("The location of SN=%d,%d,%d\n",i, j, k);
         // printf("SN added at level=%d\n", level);
