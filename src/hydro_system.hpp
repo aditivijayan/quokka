@@ -824,7 +824,7 @@ void HydroSystem<problem_t>::EnforceLimits(amrex::Real const densityFloor, amrex
 		if (auxTemp < tempFloor) {
 			state[bx](i, j, k, internalEnergy_index) =
 			    quokka::EOS<problem_t>::ComputeEintFromTgas(state[bx](i, j, k, density_index), tempFloor, massScalars);
-			state[bx](i, j, k, energy_index) = Ekin + state[bx](i, j, k, internalEnergy_index);
+			// state[bx](i, j, k, energy_index) = Ekin + state[bx](i, j, k, internalEnergy_index);
 		}		
 	});
 }
@@ -858,15 +858,16 @@ void HydroSystem<problem_t>::AddInternalEnergyPdV(amrex::MultiFab &rhs_mf, amrex
 
 		if (redoFlag[bx](i, j, k) == quokka::redoFlag::none) {
 			div_v = AMREX_D_TERM((vel_x[bx](i + 1, j, k) - vel_x[bx](i, j, k)) / dx[0], +(vel_y[bx](i, j + 1, k) - vel_y[bx](i, j, k)) / dx[1],
-								+(vel_z[bx](i, j, k + 1) - vel_z[bx](i, j, k)) / dx[2]);
+					     +(vel_z[bx](i, j, k + 1) - vel_z[bx](i, j, k)) / dx[2]);
 		} else {
 			div_v = 0.5 * (AMREX_D_TERM((ComputeVelocityX1(consVar[bx], i + 1, j, k) - ComputeVelocityX1(consVar[bx], i - 1, j, k)) / dx[0],
 						    +(ComputeVelocityX2(consVar[bx], i, j + 1, k) - ComputeVelocityX2(consVar[bx], i, j - 1, k)) / dx[1],
 						    +(ComputeVelocityX3(consVar[bx], i, j, k + 1) - ComputeVelocityX3(consVar[bx], i, j, k - 1)) / dx[2]));
 		}
+
 		// add P dV term to rhs array
 		rhs[bx](i, j, k, internalEnergy_index) += -Pgas * div_v;
-		
+	});
 }
 
 template <typename problem_t> void HydroSystem<problem_t>::SyncDualEnergy(amrex::MultiFab &consVar_mf)
