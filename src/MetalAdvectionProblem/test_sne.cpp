@@ -279,7 +279,7 @@ void AddSupernova(amrex::MultiFab &mf, amrex::GpuArray<Real, AMREX_SPACEDIM> pro
         state(i, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex+1)+=  1.e3/cell_vol;
         // printf("The location of SN=%d,%d,%d\n",i, j, k);
         // printf("SN added at level=%d\n", level);
-        // printf("The total number of SN gone off=%d\n", cum_sn);
+        printf("The total number of SN gone off=%d\n", cum_sn);
         Rpds = 14. * std::pow(state(i, j, k, HydroSystem<NewProblem>::density_index)/Const_mH, -3./7.);
         printf("Rpds = %.2e pc\n", Rpds);
         }
