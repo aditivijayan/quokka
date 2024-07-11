@@ -29,7 +29,10 @@
 #include "AMReX_RandomEngine.H"
 #include "AMReX_Random.H"
 
+<<<<<<< HEAD
+=======
 
+>>>>>>> ad71e79da9a414e83d970f40ce9ff1020e3ba00f
 #include "ODEIntegrate.hpp"
 #include "RadhydroSimulation.hpp"
 #include "hydro_system.hpp"
@@ -93,8 +96,7 @@ template <> struct SimulationData<NewProblem> {
 	int SN_counter_cumulative = 0;
 	Real SN_rate_per_vol = NAN; // rate per unit time per unit volume
 	Real E_blast = 1.0e51;	    // ergs
-	Real M_ejecta = 5. * Msun;	    // 5.0 * Msun; // g
-
+	Real M_ejecta = 5.0 * Msun;	    // 5.0 * Msun; // g
 	Real refine_threshold = 1.0; // gradient refinement threshold
 };
 
@@ -278,6 +280,7 @@ void AddSupernova(amrex::MultiFab &mf, amrex::GpuArray<Real, AMREX_SPACEDIM> pro
         state(i, j, k, HydroSystem<NewProblem>::density_index)        +=   rho_blast; 
         state(i, j, k, HydroSystem<NewProblem>::energy_index)         +=   rho_eint_blast; 
         state(i, j, k, HydroSystem<NewProblem>::internalEnergy_index) +=    rho_eint_blast; 
+>>>>>>> ad71e79da9a414e83d970f40ce9ff1020e3ba00f
         state(i, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex+1)+=  1.e3/cell_vol;
         // printf("The location of SN=%d,%d,%d\n",i, j, k);
         // printf("SN added at level=%d\n", level);
@@ -344,7 +347,6 @@ void RadhydroSimulation<NewProblem>::computeAfterLevelAdvance(int lev, amrex::Re
   
   AddSupernova(state_new_cc_[lev], prob_lo, prob_hi, dx, userData_, lev);
   
-  // computeCooling(state_new_cc_[lev], dt_lev, userData_.cloudyTables);
 }
 
 template <> AMREX_GPU_DEVICE AMREX_FORCE_INLINE auto
