@@ -1,5 +1,5 @@
 # please set your project account
-export proj=" " # FILL THIS IN
+export proj="ast196 " # FILL THIS IN
 
 # required dependencies
 module load cmake/3.27.7
