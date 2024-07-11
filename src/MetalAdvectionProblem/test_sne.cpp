@@ -237,10 +237,10 @@ void AddSupernova(amrex::MultiFab &mf, amrex::GpuArray<Real, AMREX_SPACEDIM> pro
 {
 	// inject energy into cells with stochastic sampling
 	BL_PROFILE("RadhydroSimulation::Addsupernova()")
-	//const Real cell_vol = AMREX_D_TERM(*2.*dx[0], *2.*dx[1], *2.*dx[2]); // cm^3	
-	const Real cell_vol = 1.*dx[0] *dx[1] * dx[2]; // cm^3	
-        const Real rho_eint_blast = userData.E_blast / cell_vol ;   // ergs cm^-3
-     	const Real rho_blast = userData.M_ejecta / cell_vol;   // g cm^-3
+
+	const Real cell_vol = AMREX_D_TERM(dx[0], *dx[1], *dx[2]); // cm^3
+	const Real rho_eint_blast = userData.E_blast / cell_vol  ;   // ergs cm^-3
+        const Real rho_blast = userData.M_ejecta / cell_vol  ;   // g cm^-3
 	const int cum_sn = userData.SN_counter_cumulative;
 
 	const Real Lx = prob_hi[0] - prob_lo[0];
@@ -271,9 +271,9 @@ void AddSupernova(amrex::MultiFab &mf, amrex::GpuArray<Real, AMREX_SPACEDIM> pro
         y0 = std::abs(yc -py(n));
         z0 = std::abs(zc -pz(n));
 
-        if(x0<0.5*dx[0] && y0<0.5*dx[1] && z0< 0.5*dx[2] ) {
+        if(x0<0.5 *dx[0] && y0<0.5 *dx[1] && z0< 0.5 *dx[2] ) {
         // if(i==32 & j==32 & k==32){
-        state(i, j, k, HydroSystem<NewProblem>::density_index)         +=   rho_blast; 
+        state(i, j, k, HydroSystem<NewProblem>::density_index)        +=   rho_blast; 
         state(i, j, k, HydroSystem<NewProblem>::energy_index)         +=   rho_eint_blast; 
         state(i, j, k, HydroSystem<NewProblem>::internalEnergy_index) +=    rho_eint_blast; 
         state(i, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex+1)+=  1.e3/cell_vol;
@@ -305,7 +305,7 @@ template <> void RadhydroSimulation<NewProblem>::computeBeforeTimestep()
 	const int count = static_cast<int>(amrex::RandomPoisson(expectation_value));
   
 	if (count > 0) {
-		amrex::Print() << "\t" << count << " SNe to be exploded.\n";
+		// amrex::Print() << "\t" << count << " SNe to be exploded.\n";
     // amrex::Print() << "\t" << ks_sigma_sfr << " Expectation value.\n";
   }
 	// resize particle arrays
@@ -435,6 +435,129 @@ void RadhydroSimulation<NewProblem>::addStrangSplitSources(amrex::MultiFab &mf, 
 }
 
 /**************************End Adding Strang Split Source Term *****************/
+
+
+/*********---Projection----******/
+template <> auto RadhydroSimulation<NewProblem>::ComputeProjections(const int dir) const -> std::unordered_map<std::string, amrex::BaseFab<amrex::Real>>
+{
+  // compute density projection
+  std::unordered_map<std::string, amrex::BaseFab<amrex::Real>> proj;
+
+  proj["mass_outflow"] = computePlaneProjection<amrex::ReduceOpSum>(
+      [=] AMREX_GPU_DEVICE(int i, int j, int k, amrex::Array4<const Real> const &state) noexcept {
+        // int nmscalars = Physics_Traits<NewProblem>::numMassScalars;
+        Real const rho = state(i, j, k, HydroSystem<NewProblem>::density_index);
+        Real const vz = state(i, j, k, HydroSystem<NewProblem>::x3Momentum_index)/rho;
+        
+        amrex::Real const vx3 = state(i, j, k, HydroSystem<NewProblem>::x3Momentum_index) / rho;
+        amrex::Real Eint = state(i, j, k, HydroSystem<NewProblem>::internalEnergy_index);
+  
+        amrex::GpuArray<Real, 0> massScalars = RadSystem<NewProblem>::ComputeMassScalars(state, i, j, k);
+        Real const primTemp = quokka::EOS<NewProblem>::ComputeTgasFromEint(rho, Eint, massScalars);
+        return (rho * vz) ;
+      },
+      dir);
+
+   proj["hot_mass_outflow"] = computePlaneProjection<amrex::ReduceOpSum>(
+      [=] AMREX_GPU_DEVICE(int i, int j, int k, amrex::Array4<const Real> const &state) noexcept {
+        
+        double flux;
+        Real const rho = state(i, j, k, HydroSystem<NewProblem>::density_index);
+        Real const rhoZ = state(i, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex+1);
+        Real const vx3 = state(i, j, k, HydroSystem<NewProblem>::x3Momentum_index) / rho;
+        Real const Eint = state(i, j, k, HydroSystem<NewProblem>::internalEnergy_index);
+        amrex::GpuArray<Real, 0> massScalars = RadSystem<NewProblem>::ComputeMassScalars(state, i, j, k);
+		    Real const primTemp = quokka::EOS<NewProblem>::ComputeTgasFromEint(rho, Eint, massScalars);
+        if(primTemp>1.e6) {
+          flux = rho * vx3;
+        } else {
+          flux = 0.0;
+        }
+        return flux ;
+      },
+      dir);
+
+  proj["warm_mass_outflow"] = computePlaneProjection<amrex::ReduceOpSum>(
+      [=] AMREX_GPU_DEVICE(int i, int j, int k, amrex::Array4<const Real> const &state) noexcept {
+        
+        double flux;
+        Real const rho = state(i, j, k, HydroSystem<NewProblem>::density_index);
+        Real const rhoZ = state(i, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex+1);
+        Real const vx3 = state(i, j, k, HydroSystem<NewProblem>::x3Momentum_index) / rho;
+        Real const Eint = state(i, j, k, HydroSystem<NewProblem>::internalEnergy_index);
+        amrex::GpuArray<Real, 0> massScalars = RadSystem<NewProblem>::ComputeMassScalars(state, i, j, k);
+		    Real const primTemp = quokka::EOS<NewProblem>::ComputeTgasFromEint(rho, Eint, massScalars);
+        if(primTemp<2.e4) {
+          flux = rho * vx3;
+        } else {
+          flux = 0.0;
+        }
+        return flux ;
+      },
+      dir);   
+
+  proj["scalar_outflow"] = computePlaneProjection<amrex::ReduceOpSum>(
+      [=] AMREX_GPU_DEVICE(int i, int j, int k, amrex::Array4<const Real> const &state) noexcept {
+        Real const rho  = state(i, j, k, HydroSystem<NewProblem>::density_index);
+        Real const rhoZ = state(i, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex+1);
+        Real const vz   = state(i, j, k, HydroSystem<NewProblem>::x3Momentum_index)/rho;
+        return (rhoZ * vz) ;
+      },
+      dir);
+
+  proj["warm_scalar_outflow"] = computePlaneProjection<amrex::ReduceOpSum>(
+      [=] AMREX_GPU_DEVICE(int i, int j, int k, amrex::Array4<const Real> const &state) noexcept {
+        
+        double flux;
+        Real const rho = state(i, j, k, HydroSystem<NewProblem>::density_index);
+        Real const rhoZ = state(i, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex+1);
+        Real const vx3 = state(i, j, k, HydroSystem<NewProblem>::x3Momentum_index) / rho;
+        Real const Eint = state(i, j, k, HydroSystem<NewProblem>::internalEnergy_index);
+        amrex::GpuArray<Real, 0> massScalars = RadSystem<NewProblem>::ComputeMassScalars(state, i, j, k);
+		    Real const primTemp = quokka::EOS<NewProblem>::ComputeTgasFromEint(rho, Eint, massScalars);
+        if(primTemp<2.e4) {
+          flux = rhoZ * vx3;
+        } else {
+          flux = 0.0;
+        }
+        return flux ;
+      },
+      dir); 
+
+  proj["hot_scalar_outflow"] = computePlaneProjection<amrex::ReduceOpSum>(
+      [=] AMREX_GPU_DEVICE(int i, int j, int k, amrex::Array4<const Real> const &state) noexcept {
+        
+        double flux;
+        Real const rho = state(i, j, k, HydroSystem<NewProblem>::density_index);
+        Real const rhoZ = state(i, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex+1);
+        Real const vx3 = state(i, j, k, HydroSystem<NewProblem>::x3Momentum_index) / rho;
+        Real const Eint = state(i, j, k, HydroSystem<NewProblem>::internalEnergy_index);
+        amrex::GpuArray<Real, 0> massScalars = RadSystem<NewProblem>::ComputeMassScalars(state, i, j, k);
+		    Real const primTemp = quokka::EOS<NewProblem>::ComputeTgasFromEint(rho, Eint, massScalars);
+        if(primTemp>1.e6) {
+          flux = rhoZ * vx3;
+        } else {
+          flux = 0.0;
+        }
+        return flux ;
+      },
+      dir);      
+
+  proj["rho"] = computePlaneProjection<amrex::ReduceOpSum>(
+      [=] AMREX_GPU_DEVICE(int i, int j, int k, amrex::Array4<const Real> const &state) noexcept {
+        Real const rho = state(i, j, k, HydroSystem<NewProblem>::density_index);
+        return (rho) ;
+      },
+      dir);
+
+  proj["scalar"] = computePlaneProjection<amrex::ReduceOpSum>(
+      [=] AMREX_GPU_DEVICE(int i, int j, int k, amrex::Array4<const Real> const &state) noexcept {
+        Real const rhoZ = state(i, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex+1);
+        return (rhoZ) ;
+      },
+      dir);    
+  return proj;
+}
 
 /**************************Begin Diode BC *****************/
 
