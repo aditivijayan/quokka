@@ -98,15 +98,14 @@ AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE auto cloudy_cooling_function(Real const
 	const Real nH = rhoH / (C::m_p + C::m_e);
 	const Real log_nH = std::log10(nH);
 	const Real log_T = std::log10(T);
-
 	const double logPrimCool = interpolate2d(log_nH, log_T, tables.log_nH, tables.log_Tgas, tables.primCool);
 	const double logPrimHeat = interpolate2d(log_nH, log_T, tables.log_nH, tables.log_Tgas, tables.primHeat);
 	const double logMetalCool = interpolate2d(log_nH, log_T, tables.log_nH, tables.log_Tgas, tables.metalCool);
 	const double logMetalHeat = interpolate2d(log_nH, log_T, tables.log_nH, tables.log_Tgas, tables.metalHeat);
 
 	const double netLambda_prim = FastMath::pow10(logPrimHeat) - FastMath::pow10(logPrimCool);
-	const double netLambda_metals = FastMath::pow10(logMetalHeat) -  FastMath::pow10(logMetalCool);
-	const double netLambda = netLambda_prim +  Zbg *netLambda_metals;
+	const double netLambda_metals = FastMath::pow10(logMetalHeat) - Zbg*FastMath::pow10(logMetalCool);
+	const double netLambda = netLambda_prim +   netLambda_metals;
 
 	// multiply by the square of H mass density (**NOT number density**)
 	double Edot = (rhoH * rhoH) * netLambda;
@@ -126,7 +125,7 @@ AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE auto cloudy_cooling_function(Real const
 	constexpr double G_0 = 1.7; // ISRF from Wolfire et al. (2003)
 	const double epsilon = 4.9e-2 / (1. + 4.0e-3 * std::pow(G_0 * Tsqrt / (n_e * phi), 0.73)) +
 			       3.7e-2 * std::pow(T / 1.0e4, 0.7) / (1. + 2.0e-4 * (G_0 * Tsqrt / (n_e * phi)));
-	const double Gamma_pe = 1.3e-24 * nH * epsilon * G_0;
+	const double Gamma_pe = Zbg * 1.3e-24 * nH * epsilon * G_0;
 	Edot += Gamma_pe;
 
 	// Compton term (CMB photons)
