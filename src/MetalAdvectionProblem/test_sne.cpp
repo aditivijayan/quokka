@@ -300,7 +300,7 @@ template <> struct SimulationData<NewProblem> {
 	int SN_counter_cumulative = 0;
 	Real SN_rate_per_vol = NAN; // rate per unit time per unit volume
 	Real E_blast = 1.0e51;	    // ergs
-	Real M_ejecta = 5.0 * Msun;	    // 5.0 * Msun; // g
+	Real M_ejecta = 5.0 * Msun ;	    // 5.0 * Msun; // g
 	Real refine_threshold = 1.0; // gradient refinement threshold
 };
 
@@ -475,14 +475,15 @@ void AddSupernova(amrex::MultiFab &mf, amrex::GpuArray<Real, AMREX_SPACEDIM> pro
         y0 = std::abs(yc -py(n));
         z0 = std::abs(zc -pz(n));
 
-        if(x0<0.5*dx[0] && y0<0.5*dx[1] && z0< 0.5*dx[2] ) {
-        state(i, j, k, HydroSystem<NewProblem>::energy_index)         +=  rho_eint_blast; 
-        state(i, j, k, HydroSystem<NewProblem>::internalEnergy_index) +=  rho_eint_blast; 
-        state(i, j, k, HydroSystem<NewProblem>::density_index)        +=  rho_blast;
-        state(i, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex)+=  1.e3/cell_vol;
+        if(x0<0.5 *dx[0] && y0<0.5 *dx[1] && z0< 0.5 *dx[2] ) {
+        // if(i==32 & j==32 & k==32){
+        state(i, j, k, HydroSystem<NewProblem>::density_index)        +=   rho_blast; 
+        state(i, j, k, HydroSystem<NewProblem>::energy_index)         +=   rho_eint_blast; 
+        state(i, j, k, HydroSystem<NewProblem>::internalEnergy_index) +=    rho_eint_blast; 
+        state(i, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex+1)+=  1.e3/cell_vol;
         // printf("The location of SN=%d,%d,%d\n",i, j, k);
         // printf("SN added at level=%d\n", level);
-        // printf("The total number of SN gone off=%d\n", cum_sn);
+        printf("The total number of SN gone off=%d\n", cum_sn);
         Rpds = 14. * std::pow(state(i, j, k, HydroSystem<NewProblem>::density_index)/Const_mH, -3./7.);
         // printf("Rpds = %.2e pc\n", Rpds);
         }
