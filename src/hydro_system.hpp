@@ -451,11 +451,6 @@ AMREX_GPU_DEVICE AMREX_FORCE_INLINE auto HydroSystem<problem_t>::isStateValid(am
 	double speed = std::sqrt(vx*vx + vy*vy + vz*vz);
 	double soundspeed = ComputeSoundSpeed(cons, i, j, k);
 	double MachNumber = speed/soundspeed;
-	// if(i==64 && j==20 && k==506){
-	// 	printf("M at %d,%d,%d is =%.2e\n", i,j,k, MachNumber);
-	// 	printf("Sound speed, speed=%.2e, %.2e\n", soundspeed, speed);
-	// }
-	// cs = ComputeSoundSpeed(cons[bx], i, j, k);
 
 	return isDensityPositive && isMassScalarPositive;
 }
@@ -815,12 +810,6 @@ void HydroSystem<problem_t>::EnforceLimits(amrex::Real const densityFloor, amrex
 		Eint = state[bx](i, j, k, internalEnergy_index);
 		amrex::Real auxTemp = quokka::EOS<problem_t>::ComputeTgasFromEint(rho, Eint, massScalars);
 
-		// if (auxTemp > tempCeiling) {
-		// 	state[bx](i, j, k, internalEnergy_index) =
-		// 	    quokka::EOS<problem_t>::ComputeEintFromTgas(state[bx](i, j, k, density_index), tempCeiling, massScalars);
-		// 	state[bx](i, j, k, energy_index) = Ekin + state[bx](i, j, k, internalEnergy_index);
-		// }
-
 		if (auxTemp < tempFloor) {
 			state[bx](i, j, k, internalEnergy_index) =
 			    quokka::EOS<problem_t>::ComputeEintFromTgas(state[bx](i, j, k, density_index), tempFloor, massScalars);
@@ -1060,14 +1049,6 @@ void HydroSystem<problem_t>::ComputeFluxes(amrex::MultiFab &x1Flux_mf, amrex::Mu
 		sR.by = 0.0;
 		sR.bz = 0.0;
 
-		if(i==506 && j==64 && k==20){
-			// printf("sR.rho, sR.P, sR.E, sR.Eint=%.2e, %.2e, %.2e, %.2e\n", sR.rho, sR.P, sR.E, sR.Eint);
-			// printf("sR.u  , sR.v, sR.w, sR.cs    =%.2e, %.2e, %.2e, %.2e\n", sR.u, sR.v, sR.w, sR.cs);
-
-			// printf("sL.rho, sL.P, sL.E, sL.Eint=%.2e, %.2e, %.2e, %.2e\n", sL.rho, sL.P, sL.E, sL.Eint);
-			// printf("sL.u  , sL.v, sL.w, sL.cs    =%.2e, %.2e, %.2e, %.2e\n", sL.u  , sL.v, sL.w, sL.cs);
-			
-		}
 		// The remaining components are mass scalars and passive scalars, so just copy them from
 		// x1LeftState and x1RightState into the (left, right) state vectors U_L and
 		// U_R
@@ -1075,16 +1056,10 @@ void HydroSystem<problem_t>::ComputeFluxes(amrex::MultiFab &x1Flux_mf, amrex::Mu
 			sL.scalar[n] = x1LeftState(i, j, k, scalar0_index + n);
 			sR.scalar[n] = x1RightState(i, j, k, scalar0_index + n);
 
-			if(i==506 && j==64 && k==20){
-				// printf("n, sL.scalar[n], sR.scalar[n]=%d, %.2e, %.2e\n", n, sL.scalar[n], sR.scalar[n]);
-			}
 			// also store mass scalars separately
 			if (n < nmscalars_) {
 				sL.massScalar[n] = x1LeftState(i, j, k, scalar0_index + n);
 				sR.massScalar[n] = x1RightState(i, j, k, scalar0_index + n);
-				if(i==506 && j==64 && k==20){
-				// printf("n, sL.massScalar[n], sR.massScalar[n]=%d, %.2e, %.2e\n", n, sL.massScalar[n], sR.massScalar[n]);
-			}
 			}
 		}
 
