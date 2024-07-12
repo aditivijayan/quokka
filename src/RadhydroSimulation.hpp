@@ -691,9 +691,6 @@ template <typename problem_t> void RadhydroSimulation<problem_t>::advanceSingleT
 	// check hydro states after radiation update
 	CHECK_HYDRO_STATES(state_new_cc_[lev]);
 
-	// Real dens_max = state_new_cc_[0].norm0(4);
- 	// printf("Before AddSN--1 egas_max=%.2e\n", dens_max);
-
 	// compute any operator-split terms here (user-defined)
 	computeAfterLevelAdvance(lev, time, dt_lev, ncycle);
 
@@ -1449,17 +1446,6 @@ auto RadhydroSimulation<problem_t>::computeHydroFluxes(amrex::MultiFab const &co
 		     , hydroFluxFunction<FluxDir::X3>(primVar, leftState[2], rightState[2], flux[2], facevel[2], flatCoefs[0], flatCoefs[1], flatCoefs[2],
 						      reconstructGhost, nvars);)
 
-	auto &facevelz1 = flux[2];
-		for (amrex::MFIter iter(facevelz1); iter.isValid(); ++iter) {
-        const amrex::Box &indexRange = iter.validbox();
-		auto const velz = facevelz1.const_array(iter);
-       amrex::ParallelFor(indexRange, [=] AMREX_GPU_DEVICE( int i, int j, int k) noexcept {
-				   double vel_z = velz(i,j,k);
-				   if(vel_z!=vel_z){
-					// printf("Nan in flux at i,j,k after hydroflux=%d, %d, %d\n", i,j,k);
-				   }
-                });
-			}
 
 	// synchronization point to prevent MultiFabs from going out of scope
 	amrex::Gpu::streamSynchronizeAll();
@@ -1527,31 +1513,7 @@ void RadhydroSimulation<problem_t>::hydroFluxFunction(amrex::MultiFab const &pri
 		HydroSystem<problem_t>::template ComputeFluxes<RiemannSolver::HLLD, DIR>(flux, faceVel, leftState, rightState, primVar, artificialViscosityK_);
 	} else {
 
-		auto &facevelz1 = flux;
-		for (amrex::MFIter iter(facevelz1); iter.isValid(); ++iter) {
-        const amrex::Box &indexRange = iter.validbox();
-		auto const velz = facevelz1.const_array(iter);
-       amrex::ParallelFor(indexRange, [=] AMREX_GPU_DEVICE( int i, int j, int k) noexcept {
-				   double vel_z = velz(i,j,k);
-				   if(vel_z!=vel_z){
-					// printf("Nan in flux at i,j,k in before RiemannSolver=%d, %d, %d\n", i,j,k);
-				   }
-                });
-			}
-
 		HydroSystem<problem_t>::template ComputeFluxes<RiemannSolver::HLLC, DIR>(flux, faceVel, leftState, rightState, primVar, artificialViscosityK_);
-
-		auto &facevelz = flux;
-		for (amrex::MFIter iter(facevelz); iter.isValid(); ++iter) {
-        const amrex::Box &indexRange = iter.validbox();
-		auto const velz = facevelz.const_array(iter);
-       amrex::ParallelFor(indexRange, [=] AMREX_GPU_DEVICE( int i, int j, int k) noexcept {
-				   double vel_z = velz(i,j,k);
-				   if(vel_z!=vel_z){
-					// printf("Nan in flux at i,j,k in after RiemannSolver=%d, %d, %d\n", i,j,k);
-				   }
-                });
-			}
 
 	}
 }

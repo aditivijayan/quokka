@@ -218,6 +218,7 @@ template <> void RadhydroSimulation<SedovProblem>::computeAfterEvolve(amrex::Vec
 	test_passes = E_test_passes && KE_test_passes;
 	amrex::Print() << "\n";
 }
+
 auto problem_main() -> int
 {
 	auto isNormalComp = [=](int n, int dim) {

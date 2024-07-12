@@ -243,7 +243,7 @@ void HydroSystem<problem_t>::ComputeMaxSignalSpeed(amrex::Array4<const amrex::Re
 		if constexpr (is_eos_isothermal()) {
 			cs = cs_iso_;
 		} else {
-			cs = ComputeSoundSpeed(cons, i, j, k); 
+			cs = ComputeSoundSpeed(cons, i, j, k);
 		}
 		AMREX_ASSERT(cs > 0.);
 
@@ -428,6 +428,7 @@ AMREX_GPU_DEVICE AMREX_FORCE_INLINE auto HydroSystem<problem_t>::isStateValid(am
 	// check if cons(i, j, k) is a valid state
 	const amrex::Real rho = cons(i, j, k, density_index);
 	bool isDensityPositive = (rho > 0.);
+
 	bool isMassScalarPositive = true;
 	if constexpr (nmscalars_ > 0) {
 		amrex::GpuArray<Real, nmscalars_> massScalars_ = RadSystem<problem_t>::ComputeMassScalars(cons, i, j, k);
@@ -442,14 +443,6 @@ AMREX_GPU_DEVICE AMREX_FORCE_INLINE auto HydroSystem<problem_t>::isStateValid(am
 	// when the dual energy method is used, we *cannot* reset on pressure
 	// failures. on the other hand, we don't need to -- the auxiliary internal
 	// energy is used instead!
-
-
-	const amrex::Real vx = cons(i, j, k, x1Momentum_index)/rho;
-	const amrex::Real vy = cons(i, j, k, x2Momentum_index)/rho;
-	const amrex::Real vz = cons(i, j, k, x3Momentum_index)/rho;
-	double speed = std::sqrt(vx*vx + vy*vy + vz*vz);
-	double soundspeed = ComputeSoundSpeed(cons, i, j, k);
-	double MachNumber = speed/soundspeed;
 
 	return isDensityPositive && isMassScalarPositive;
 }

@@ -286,7 +286,7 @@ template <typename problem_t> auto computeCooling(amrex::MultiFab &mf, const Rea
 			const Real Eint = RadSystem<problem_t>::ComputeEintFromEgas(rho, x1Mom, x2Mom, x3Mom, Egas);
 			const Real gamma = quokka::EOS_Traits<problem_t>::gamma;
 			ODEUserData user_data{rho, gamma, tables};
-			quokka::valarray<Real, 1> y = {Eint};			
+			quokka::valarray<Real, 1> y = {Eint};		
 			quokka::valarray<Real, 1> const abstol = {reltol_floor * ComputeEgasFromTgas(rho, T_floor, gamma, tables)};
 
 			// do integration with RK2 (Heun's method)

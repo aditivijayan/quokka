@@ -104,7 +104,7 @@ EOS<problem_t>::ComputeTgasFromEint(amrex::Real rho, amrex::Real Eint,
 		chem_eos_t estate;
 		estate.rho = rho;
 		estate.e = Eint / rho;
-		estate.mu = mean_molecular_weight_  / C::m_u;
+		estate.mu = mean_molecular_weight_ / C::m_u;
 		eos(eos_input_re, estate);
 		// scale returned temperature in case boltzmann constant is dimensionless
 		Tgas = estate.T * C::k_B / boltzmann_constant_;
@@ -373,7 +373,6 @@ EOS<problem_t>::ComputeSoundSpeed(amrex::Real rho, amrex::Real Pressure,
 		chem_eos_t estate;
 		estate.rho = rho;
 		estate.p = Pressure;
-		// printf("Density, pressure inside EOS=%.2e, %.2e\n", rho, Pressure);
 		estate.mu = mean_molecular_weight_ / C::m_u;
 		eos(eos_input_rp, estate);
 		cs = estate.cs;

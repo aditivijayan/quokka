@@ -1,5 +1,5 @@
 # please set your project account
-export proj="ast196 " # FILL THIS IN
+export proj="" # FILL THIS IN
 
 # required dependencies
 module load cmake/3.27.7
@@ -18,7 +18,7 @@ module unload darshan-runtime
 export Ascent_DIR=/sw/summit/ums/ums010/ascent/0.8.0_warpx/summit/cuda/gnu/ascent-install/
 
 # optional: for Python bindings or libEnsemble
-module load python/3.11.6
+module load python/3.8.10
 module load freetype/2.11.1     # matplotlib
 
 # an alias to request an interactive batch node for two hours
