@@ -36,4 +36,7 @@ speed_ceiling = 1.5e9  #in cm/s
 cooling.enabled = 1
 cooling.grackle_data_file = "/g/data/jh2/av5889/quokka_myrepo/quokka/extern/grackle_data_files/input/CloudyData_UVB=HM2012.h5"
 
-metprob.pressure0 = 5.68338666869196e-16 #cgs, from intial conditions on the edge of the box
+phi_file.name = "/g/data/jh2/av5889/quokka_myrepo/quokka/src/MetalAdvectionProblem/PhiGas_R8.h5"
+
+projection_interval = 5000
+projection.dirs = y
