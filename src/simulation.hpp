@@ -169,10 +169,8 @@ template <typename problem_t> class AMRSimulation : public amrex::AmrCore
 	int doPoissonSolve_ = 0;		    // 1 == self-gravity enabled, 0 == disabled
 	amrex::Vector<amrex::MultiFab> phi;
 
-	amrex::Real densityFloor_ = 0.0;				// default
-	amrex::Real tempCeiling_ = std::numeric_limits<double>::max();	// default
-	amrex::Real tempFloor_ = 0.0;					// default
-	amrex::Real speedCeiling_ = std::numeric_limits<double>::max(); // default
+	amrex::Real densityFloor_ = 0.0; // default
+	amrex::Real tempFloor_ = 0.0;	 // default
 
 	std::unordered_map<std::string, variant_t> simulationMetadata_;
 
@@ -227,6 +225,7 @@ template <typename problem_t> class AMRSimulation : public amrex::AmrCore
 	virtual void setInitialConditionsOnGrid(quokka::grid grid_elem) = 0;
 	virtual void setInitialConditionsOnGridFaceVars(quokka::grid grid_elem) = 0;
 	virtual void createInitialParticles() = 0;
+	virtual void computeBeforeTimestep() = 0;
 	virtual void computeAfterTimestep() = 0;
 	virtual void computeAfterEvolve(amrex::Vector<amrex::Real> &initSumCons) = 0;
 	virtual void fillPoissonRhsAtLevel(amrex::MultiFab &rhs, int lev) = 0;
@@ -580,6 +579,12 @@ template <typename problem_t> void AMRSimulation<problem_t>::readParameters()
 	// Default checkpoint interval
 	pp.query("checkpoint_interval", checkpointInterval_);
 
+	// Default plotfile prefix
+	pp.query("plotfile_prefix", plot_file);
+
+	// Default checkpoint prefix
+	pp.query("checkpoint_prefix", chk_file);
+
 	// Default do_reflux = 1
 	pp.query("do_reflux", do_reflux);
 
@@ -610,12 +615,6 @@ template <typename problem_t> void AMRSimulation<problem_t>::readParameters()
 
 	// read temperature floor in K
 	pp.query("temperature_floor", tempFloor_);
-
-	// read temperature ceiling in K
-	pp.query("temperature_ceiling", tempCeiling_);
-
-	// read speed ceiling in cm s^-1
-	pp.query("speed_ceiling", speedCeiling_);
 
 	// specify maximum walltime in HH:MM:SS format
 	std::string maxWalltimeInput;
@@ -867,6 +866,9 @@ template <typename problem_t> void AMRSimulation<problem_t>::evolve()
 		amrex::ParallelDescriptor::Barrier(); // synchronize all MPI ranks
 		computeTimestep();
 		computeBeforeTimestep(); 
+
+		// do user-specified calculations before the level update
+		computeBeforeTimestep();
 
 		// do particle leapfrog (first kick at time t)
 		kickParticlesAllLevels(dt_[0]);
