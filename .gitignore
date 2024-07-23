@@ -1,3 +1,6 @@
+plt*
+chk*
+last_chk
 *.log
 compile_commands.json
 .vscode/
@@ -10,7 +13,6 @@ tests/chk*
 tests/*.csv
 tests/plt*
 sims/
-SNRecipe/
 .clangd
 __pycache__
 *.code-workspace

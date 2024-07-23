@@ -47,8 +47,8 @@ std::string input_data_file; //="/g/data/jh2/av5889/quokka_myrepo/quokka/sims/Ga
 AMREX_GPU_MANAGED amrex::GpuArray<amrex::Real, 4999> phi_data;
 AMREX_GPU_MANAGED amrex::GpuArray<amrex::Real, 4999> g_data;
 AMREX_GPU_MANAGED amrex::GpuArray<amrex::Real, 4999> z_data;
-AMREX_GPU_MANAGED amrex::GpuArray<amrex::Real, 1> z_star, Sigma_star, rho_dm, R0, ks_sigma_sfr, hscale;
-double sigma1, sigma2, rho01, rho02;
+AMREX_GPU_MANAGED amrex::Real z_star, Sigma_star, rho_dm, R0, ks_sigma_sfr, hscale;
+AMREX_GPU_MANAGED amrex::Real sigma1, sigma2, rho01, rho02;
 
 AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE auto linearInterpolate(amrex::GpuArray<amrex::Real, 4999>& x, amrex::GpuArray<amrex::Real, 4999>& y, double x_interp) {
     // Find the two closest data points
@@ -465,7 +465,7 @@ void AddSupernova(amrex::MultiFab &mf, amrex::GpuArray<Real, AMREX_SPACEDIM> pro
 			const Real yc = prob_lo[1] + static_cast<Real>(j) * dx[1] + 0.5 * dx[1];
 			const Real zc = prob_lo[2] + static_cast<Real>(k) * dx[2] + 0.5 * dx[2];
 
-			for (int n = 0; n < 1; ++n) {
+			for (int n = 0; n < np; ++n) {
 				Real x0 = NAN;
 				Real y0 = NAN;
 				Real z0 = NAN;
@@ -476,16 +476,14 @@ void AddSupernova(amrex::MultiFab &mf, amrex::GpuArray<Real, AMREX_SPACEDIM> pro
         z0 = std::abs(zc -pz(n));
 
         if(x0<0.5 *dx[0] && y0<0.5 *dx[1] && z0< 0.5 *dx[2] ) {
-        // if(i==32 & j==32 & k==32){
         state(i, j, k, HydroSystem<NewProblem>::density_index)        +=   rho_blast; 
         state(i, j, k, HydroSystem<NewProblem>::energy_index)         +=   rho_eint_blast; 
         state(i, j, k, HydroSystem<NewProblem>::internalEnergy_index) +=    rho_eint_blast; 
-        state(i, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex+1)+=  1.e3/cell_vol;
-        // printf("The location of SN=%d,%d,%d\n",i, j, k);
-        // printf("SN added at level=%d\n", level);
+        state(i, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex)+=  1.e3/cell_vol;
+  
         printf("The total number of SN gone off=%d\n", cum_sn);
         Rpds = 14. * std::pow(state(i, j, k, HydroSystem<NewProblem>::density_index)/Const_mH, -3./7.);
-        // printf("Rpds = %.2e pc\n", Rpds);
+        printf("Rpds = %.2e pc\n", Rpds);
         }
 			}
 		});
@@ -508,10 +506,6 @@ template <> void RadhydroSimulation<NewProblem>::computeBeforeTimestep()
   
 	const int count = static_cast<int>(amrex::RandomPoisson(expectation_value));
   
-	if (count > 0) {
-		// amrex::Print() << "\t" << count << " SNe to be exploded.\n";
-    // amrex::Print() << "\t" << ks_sigma_sfr << " Expectation value.\n";
-  }
 	// resize particle arrays
 	amrex::Array<int, 1> const lo{0};
 	amrex::Array<int, 1> const hi{count};
@@ -553,8 +547,7 @@ HydroSystem<NewProblem>::GetGradFixedPotential(amrex::GpuArray<amrex::Real, AMRE
                                   -> amrex::GpuArray<amrex::Real, AMREX_SPACEDIM> {
  
      amrex::GpuArray<amrex::Real, AMREX_SPACEDIM> grad_potential;
-// auto const &dummy = userData_.blast_x;
-    
+
       double x = posvec[0];
      
      grad_potential[0] =  0.0;
@@ -621,9 +614,7 @@ void RadhydroSimulation<NewProblem>::addStrangSplitSources(amrex::MultiFab &mf, 
         #endif
 
       GradPhi = HydroSystem<NewProblem>::GetGradFixedPotential(posvec);   
-      // GradPhi[1] = 0.0;
-      // GradPhi[2] = 0.0;
-
+      
       x1mom_new = state(i, j, k, HydroSystem<NewProblem>::x1Momentum_index) + dt * (-rho * GradPhi[0]);
       x2mom_new = state(i, j, k, HydroSystem<NewProblem>::x2Momentum_index) + dt * (-rho * GradPhi[1]);
       x3mom_new = state(i, j, k, HydroSystem<NewProblem>::x3Momentum_index) + dt * (-rho * GradPhi[2]);
@@ -667,7 +658,7 @@ template <> auto RadhydroSimulation<NewProblem>::ComputeProjections(const int di
         
         double flux;
         Real const rho = state(i, j, k, HydroSystem<NewProblem>::density_index);
-        Real const rhoZ = state(i, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex+1);
+        Real const rhoZ = state(i, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex);
         Real const vx3 = state(i, j, k, HydroSystem<NewProblem>::x3Momentum_index) / rho;
         Real const Eint = state(i, j, k, HydroSystem<NewProblem>::internalEnergy_index);
         amrex::GpuArray<Real, 0> massScalars = RadSystem<NewProblem>::ComputeMassScalars(state, i, j, k);
@@ -686,7 +677,7 @@ template <> auto RadhydroSimulation<NewProblem>::ComputeProjections(const int di
         
         double flux;
         Real const rho = state(i, j, k, HydroSystem<NewProblem>::density_index);
-        Real const rhoZ = state(i, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex+1);
+        Real const rhoZ = state(i, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex);
         Real const vx3 = state(i, j, k, HydroSystem<NewProblem>::x3Momentum_index) / rho;
         Real const Eint = state(i, j, k, HydroSystem<NewProblem>::internalEnergy_index);
         amrex::GpuArray<Real, 0> massScalars = RadSystem<NewProblem>::ComputeMassScalars(state, i, j, k);
@@ -703,7 +694,7 @@ template <> auto RadhydroSimulation<NewProblem>::ComputeProjections(const int di
   proj["scalar_outflow"] = computePlaneProjection<amrex::ReduceOpSum>(
       [=] AMREX_GPU_DEVICE(int i, int j, int k, amrex::Array4<const Real> const &state) noexcept {
         Real const rho  = state(i, j, k, HydroSystem<NewProblem>::density_index);
-        Real const rhoZ = state(i, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex+1);
+        Real const rhoZ = state(i, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex);
         Real const vz   = state(i, j, k, HydroSystem<NewProblem>::x3Momentum_index)/rho;
         return (rhoZ * vz) ;
       },
@@ -714,7 +705,7 @@ template <> auto RadhydroSimulation<NewProblem>::ComputeProjections(const int di
         
         double flux;
         Real const rho = state(i, j, k, HydroSystem<NewProblem>::density_index);
-        Real const rhoZ = state(i, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex+1);
+        Real const rhoZ = state(i, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex);
         Real const vx3 = state(i, j, k, HydroSystem<NewProblem>::x3Momentum_index) / rho;
         Real const Eint = state(i, j, k, HydroSystem<NewProblem>::internalEnergy_index);
         amrex::GpuArray<Real, 0> massScalars = RadSystem<NewProblem>::ComputeMassScalars(state, i, j, k);
@@ -733,7 +724,7 @@ template <> auto RadhydroSimulation<NewProblem>::ComputeProjections(const int di
         
         double flux;
         Real const rho = state(i, j, k, HydroSystem<NewProblem>::density_index);
-        Real const rhoZ = state(i, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex+1);
+        Real const rhoZ = state(i, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex);
         Real const vx3 = state(i, j, k, HydroSystem<NewProblem>::x3Momentum_index) / rho;
         Real const Eint = state(i, j, k, HydroSystem<NewProblem>::internalEnergy_index);
         amrex::GpuArray<Real, 0> massScalars = RadSystem<NewProblem>::ComputeMassScalars(state, i, j, k);
@@ -756,7 +747,7 @@ template <> auto RadhydroSimulation<NewProblem>::ComputeProjections(const int di
 
   proj["scalar"] = computePlaneProjection<amrex::ReduceOpSum>(
       [=] AMREX_GPU_DEVICE(int i, int j, int k, amrex::Array4<const Real> const &state) noexcept {
-        Real const rhoZ = state(i, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex+1);
+        Real const rhoZ = state(i, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex);
         return (rhoZ) ;
       },
       dir);    
@@ -823,8 +814,8 @@ auto problem_main() -> int {
 		for (int i = 0; i < AMREX_SPACEDIM; ++i) {
 				// outflowing boundary conditions
         if(i==2){
-				 BCs_cc[n].setLo(i, amrex::BCType::foextrap);
-				 BCs_cc[n].setHi(i, amrex::BCType::foextrap);
+				 BCs_cc[n].setLo(i, amrex::BCType::ext_dir);
+				 BCs_cc[n].setHi(i, amrex::BCType::ext_dir);
         }
         else{
            BCs_cc[n].setLo(i, amrex::BCType::int_dir); // periodic
@@ -843,8 +834,6 @@ auto problem_main() -> int {
   
   read_potential(z_data, phi_data, g_data);
   
-  // readCloudyData(sim.userData_.cloudyTables);
-  // initialize
   sim.setInitialConditions();
 
   // evolve
