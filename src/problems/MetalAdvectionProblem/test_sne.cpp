@@ -351,7 +351,7 @@ template <> void QuokkaSimulation<NewProblem>::computeBeforeTimestep()
 		py(i) = geom[0].ProbLength(1) * amrex::Random();
 		pz(i) = 2.*kpc;;
 		while(1.*kpc < pz(i)){
-			pz(i) = geom[0].ProbLength(2) * amrex::RandomNormal(mean, stddevAGB);
+			pz(i) = geom[0].ProbLength(2) * amrex::RandomNormal(mean, stddev);
 		}
 	}
 	//Get probablities for Type Ias
@@ -386,11 +386,11 @@ template <> void QuokkaSimulation<NewProblem>::computeBeforeTimestep()
 	auto const &pxAGB = userData_.blast_xAGB->table();
 	auto const &pyAGB = userData_.blast_yAGB->table();
 	auto const &pzAGB = userData_.blast_zAGB->table();
-	for (int i = 0; i < count1a; ++i) {
+	for (int i = 0; i < countAGB; ++i) {
 		pxAGB(i) = geom[0].ProbLength(0) * amrex::Random();
 		pyAGB(i) = geom[0].ProbLength(1) * amrex::Random();
 		pzAGB(i) = 2.*kpc;
-		while(1.*kpc < pz(i)){
+		while(1.*kpc < pzAGB(i)){
 			pzAGB(i) = geom[0].ProbLength(2) * amrex::RandomNormal(mean, stddevAGB);
 		}
 
