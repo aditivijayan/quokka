@@ -331,7 +331,15 @@ template <> void QuokkaSimulation<NewProblem>::computeBeforeTimestep()
 
 	const int count = static_cast<int>(amrex::RandomPoisson(expectation_value));
 	const int count1a = static_cast<int>(amrex::RandomPoisson(expectation_value1a));
-	const int countAGB = static_cast<int>(amrex::RandomPoisson(expectation_valueAGB));
+	      int countAGB = static_cast<int>(amrex::RandomPoisson(expectation_valueAGB));
+	//Rechoose countAGB from a Normal Distribution if it lies outside one sig
+	const int sigma = std::sqrt(expectation_valueAGB);
+	if(std::abs(countAGB-expectation_valueAGB) > sigma ){
+		amrex::Print() << "Re-evaulated countAGB=" << countAGB << ", sigma =" << sigma << "\n";
+		countAGB = static_cast<int>(amrex::RandomNormal(expectation_valueAGB, sigma));
+	}
+
+	amrex::Print() <<"Expectation value AGB =" <<  expectation_valueAGB << " count=" << countAGB << "\n";
 
 	// resize particle arrays
 	amrex::Array<int, 1> const lo{0};
