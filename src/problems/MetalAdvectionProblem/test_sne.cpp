@@ -332,14 +332,11 @@ template <> void QuokkaSimulation<NewProblem>::computeBeforeTimestep()
 	const int count = static_cast<int>(amrex::RandomPoisson(expectation_value));
 	const int count1a = static_cast<int>(amrex::RandomPoisson(expectation_value1a));
 	      int countAGB = static_cast<int>(amrex::RandomPoisson(expectation_valueAGB));
-	//Rechoose countAGB from a Normal Distribution if it lies outside one sig
-	const int sigma = std::sqrt(expectation_valueAGB);
-	if(std::abs(countAGB-expectation_valueAGB) > sigma ){
-		amrex::Print() << "Re-evaulated countAGB=" << countAGB << ", sigma =" << sigma << "\n";
+	//Rechoose countAGB from a Normal Distribution if expectation value >1
+	const Real sigma = std::sqrt(expectation_valueAGB);
+	if(expectation_valueAGB>1.0 ){
 		countAGB = static_cast<int>(amrex::RandomNormal(expectation_valueAGB, sigma));
 	}
-
-	amrex::Print() <<"Expectation value AGB =" <<  expectation_valueAGB << " count=" << countAGB << "\n";
 
 	// resize particle arrays
 	amrex::Array<int, 1> const lo{0};
@@ -503,16 +500,6 @@ template <> auto QuokkaSimulation<NewProblem>::ComputeProjections(const amrex::D
 {
 	// compute density projection
 	std::unordered_map<std::string, amrex::BaseFab<amrex::Real>> proj;
-
-	// proj["mass_outflow"] = quokka::diagnostics::computePlaneProjection<amrex::ReduceOpSum>(
-	//     [=] AMREX_GPU_DEVICE(int i, int j, int k, amrex::Array4<const Real> const &state) noexcept {
-	// 	    // int nmscalars = Physics_Traits<NewProblem>::numMassScalars;
-	// 	    Real const rho = state(i, j, k, HydroSystem<NewProblem>::density_index);
-	// 	    Real const vx3 = state(i, j, k, HydroSystem<NewProblem>::x3Momentum_index) / rho;
-	// 	    return (rho * vx3);
-	//     },
-	//     dir);
-
 
 	// compute (total) density projection
 	proj["mass_outflow"] = quokka::diagnostics::ComputePlaneProjection<amrex::ReduceOpSum>(
