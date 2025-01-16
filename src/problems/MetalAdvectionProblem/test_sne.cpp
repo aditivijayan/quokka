@@ -333,9 +333,9 @@ template <> void QuokkaSimulation<NewProblem>::computeBeforeTimestep()
 	const int count1a = static_cast<int>(amrex::RandomPoisson(expectation_value1a));
 	      int countAGB = static_cast<int>(amrex::RandomPoisson(expectation_valueAGB));
 	//Rechoose countAGB from a Normal Distribution if expectation value >1
-	const Real sigma = std::sqrt(expectation_valueAGB);
+	// const Real sigma = std::sqrt(expectation_valueAGB);
 	if(expectation_valueAGB>1.0 ){
-		countAGB = static_cast<int>(amrex::RandomNormal(expectation_valueAGB, sigma));
+		// countAGB = static_cast<int>(amrex::RandomNormal(expectation_valueAGB, sigma));
 	}
 
 	// resize particle arrays
@@ -376,7 +376,7 @@ template <> void QuokkaSimulation<NewProblem>::computeBeforeTimestep()
 		pz1a(i) = 2.*kpc;
 		while(1.*kpc < pz1a(i)){
 			pz1a(i) = geom[0].ProbLength(2) * amrex::RandomNormal(mean, stddev1a);
-		}
+		}	
 
 	}
 
@@ -391,6 +391,15 @@ template <> void QuokkaSimulation<NewProblem>::computeBeforeTimestep()
 	auto const &pxAGB = userData_.blast_xAGB->table();
 	auto const &pyAGB = userData_.blast_yAGB->table();
 	auto const &pzAGB = userData_.blast_zAGB->table();
+
+    printf("The expectation value is = %.3e\n", expectation_valueAGB);
+	printf("Count AGB is = %d\n", countAGB);
+
+	// for (int i = 0; i < countAGB; ++i){
+	// 	int pn = static_cast<int>(amrex::RandomPoisson(expectation_valueAGB));
+	// 	printf("Poisson Number = %d, %d \n", i, pn);
+	// }
+
 	for (int i = 0; i < countAGB; ++i) {
 		pxAGB(i) = geom[0].ProbLength(0) * amrex::Random();
 		pyAGB(i) = geom[0].ProbLength(1) * amrex::Random();
