@@ -333,6 +333,8 @@ template <> void QuokkaSimulation<NewProblem>::computeBeforeTimestep()
 	const int count1a = static_cast<int>(amrex::RandomPoisson(expectation_value1a));
 	const int countAGB = static_cast<int>(amrex::RandomPoisson(expectation_valueAGB));
 
+	printf("Expectation value AGB = %.2e, %d\n", expectation_valueAGB, countAGB);
+
 	// resize particle arrays
 	amrex::Array<int, 1> const lo{0};
 	amrex::Array<int, 1> const hi{count};
