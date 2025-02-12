@@ -260,9 +260,9 @@ void AddSupernova(amrex::MultiFab &mf, amrex::GpuArray<Real, AMREX_SPACEDIM> pro
 					state(i, j, k, HydroSystem<NewProblem>::internalEnergy_index) += rho_eint_blast;
 					state(i, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex) += scalar_blast;
 
-					printf("The total number of SN gone off=%d\n", cum_sn);
+					// printf("The total number of SN gone off=%d\n", cum_sn);
 					Real Rpds = 14. * std::pow(state(i, j, k, HydroSystem<NewProblem>::density_index) / Const_mH, -3. / 7.);
-					printf("Rpds = %.2e pc\n", Rpds);
+					// printf("Rpds = %.2e pc\n", Rpds);
 				}
 			}
 				//Add SN1a
@@ -278,9 +278,9 @@ void AddSupernova(amrex::MultiFab &mf, amrex::GpuArray<Real, AMREX_SPACEDIM> pro
 					state(i, j, k, HydroSystem<NewProblem>::internalEnergy_index) += rho_eint_blast;
 					state(i, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex+1) += scalar_blast;
 
-					printf("The total number of SN gone off=%d\n", cum_sn);
+					// printf("The total number of SN gone off=%d\n", cum_sn);
 					Real Rpds = 14. * std::pow(state(i, j, k, HydroSystem<NewProblem>::density_index) / Const_mH, -3. / 7.);
-					printf("Rpds (SN1a) = %.2e pc\n", Rpds);
+					// printf("Rpds (SN1a) = %.2e pc\n", Rpds);
 				}
 			}
 
@@ -302,7 +302,7 @@ void AddSupernova(amrex::MultiFab &mf, amrex::GpuArray<Real, AMREX_SPACEDIM> pro
 
 					printf("The total number of SN gone off=%d\n", cum_sn);
 					Real Rpds = 14. * std::pow(state(i, j, k, HydroSystem<NewProblem>::density_index) / Const_mH, -3. / 7.);
-					printf("Rpds (AGB) = %.2e pc\n", Rpds);
+					// printf("Rpds (AGB) = %.2e pc\n", Rpds);
 				}
 			}
 
@@ -392,8 +392,8 @@ template <> void QuokkaSimulation<NewProblem>::computeBeforeTimestep()
 	auto const &pyAGB = userData_.blast_yAGB->table();
 	auto const &pzAGB = userData_.blast_zAGB->table();
 
-    printf("The expectation value is = %.3e\n", expectation_valueAGB);
-	printf("Count AGB is = %d\n", countAGB);
+    // printsf("The expectation value is = %.3e\n", expectation_valueAGB);
+	// printf("Count AGB is = %d\n", countAGB);
 
 	// for (int i = 0; i < countAGB; ++i){
 	// 	int pn = static_cast<int>(amrex::RandomPoisson(expectation_valueAGB));
@@ -419,6 +419,34 @@ template <> void QuokkaSimulation<NewProblem>::computeAfterLevelAdvance(int lev,
 	amrex::GpuArray<amrex::Real, AMREX_SPACEDIM> const &dx = geom[lev].CellSizeArray();
 
 	AddSupernova(state_new_cc_[lev], prob_lo, prob_hi, dx, userData_, lev);
+}
+
+
+template <> void QuokkaSimulation<NewProblem>::ComputeDerivedVar(int lev, std::string const &dname, amrex::MultiFab &mf, const int ncomp_cc_in) const
+{
+	// compute derived variables and save in 'mf'
+	if (dname == "temperature") {
+		const int ncomp = ncomp_cc_in;
+		auto tables = grackleTables_.const_tables();
+
+		for (amrex::MFIter iter(mf); iter.isValid(); ++iter) {
+			const amrex::Box &indexRange = iter.validbox();
+			auto const &output = mf.array(iter);
+			auto const &state = state_new_cc_[lev].const_array(iter);
+
+			amrex::ParallelFor(indexRange, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept {
+				Real const rho = state(i, j, k, HydroSystem<NewProblem>::density_index);
+				Real const x1Mom = state(i, j, k, HydroSystem<NewProblem>::x1Momentum_index);
+				Real const x2Mom = state(i, j, k, HydroSystem<NewProblem>::x2Momentum_index);
+				Real const x3Mom = state(i, j, k, HydroSystem<NewProblem>::x3Momentum_index);
+				Real const Egas = state(i, j, k, HydroSystem<NewProblem>::energy_index);
+				Real const Eint = RadSystem<NewProblem>::ComputeEintFromEgas(rho, x1Mom, x2Mom, x3Mom, Egas);
+				Real const Tgas = ComputeTgasFromEgas(rho, Eint, HydroSystem<NewProblem>::gamma_, tables);
+
+				output(i, j, k, ncomp) = Tgas;
+			});
+		}
+	}
 }
 
 template <>
