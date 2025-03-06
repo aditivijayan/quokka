@@ -331,7 +331,12 @@ template <> void QuokkaSimulation<NewProblem>::computeBeforeTimestep()
 
 	const int count = static_cast<int>(amrex::RandomPoisson(expectation_value));
 	const int count1a = static_cast<int>(amrex::RandomPoisson(expectation_value1a));
-	const int countAGB = static_cast<int>(amrex::RandomPoisson(expectation_valueAGB));
+	      int countAGB = static_cast<int>(amrex::RandomPoisson(expectation_valueAGB));
+	//Rechoose countAGB from a Normal Distribution if expectation value >1
+	// const Real sigma = std::sqrt(expectation_valueAGB);
+	if(expectation_valueAGB>1.0 ){
+		// countAGB = static_cast<int>(amrex::RandomNormal(expectation_valueAGB, sigma));
+	}
 
 	printf("Expectation value AGB = %.2e, %d\n", expectation_valueAGB, countAGB);
 
@@ -373,7 +378,7 @@ template <> void QuokkaSimulation<NewProblem>::computeBeforeTimestep()
 		pz1a(i) = 2.*kpc;
 		while(1.*kpc < pz1a(i)){
 			pz1a(i) = geom[0].ProbLength(2) * amrex::RandomNormal(mean, stddev1a);
-		}
+		}	
 
 	}
 
@@ -388,6 +393,15 @@ template <> void QuokkaSimulation<NewProblem>::computeBeforeTimestep()
 	auto const &pxAGB = userData_.blast_xAGB->table();
 	auto const &pyAGB = userData_.blast_yAGB->table();
 	auto const &pzAGB = userData_.blast_zAGB->table();
+
+    printf("The expectation value is = %.3e\n", expectation_valueAGB);
+	printf("Count AGB is = %d\n", countAGB);
+
+	// for (int i = 0; i < countAGB; ++i){
+	// 	int pn = static_cast<int>(amrex::RandomPoisson(expectation_valueAGB));
+	// 	printf("Poisson Number = %d, %d \n", i, pn);
+	// }
+
 	for (int i = 0; i < countAGB; ++i) {
 		pxAGB(i) = geom[0].ProbLength(0) * amrex::Random();
 		pyAGB(i) = geom[0].ProbLength(1) * amrex::Random();
@@ -493,22 +507,21 @@ template <> void QuokkaSimulation<NewProblem>::addStrangSplitSources(amrex::Mult
 }
 
 // Code for producing in-situ Projection plots
-template <> auto QuokkaSimulation<NewProblem>::ComputeProjections(const int dir) const -> std::unordered_map<std::string, amrex::BaseFab<amrex::Real>>
+template <> auto QuokkaSimulation<NewProblem>::ComputeProjections(const amrex::Direction dir) const -> std::unordered_map<std::string, amrex::BaseFab<amrex::Real>>
 {
 	// compute density projection
 	std::unordered_map<std::string, amrex::BaseFab<amrex::Real>> proj;
 
-	proj["mass_outflow"] = computePlaneProjection<amrex::ReduceOpSum>(
-	    [=] AMREX_GPU_DEVICE(int i, int j, int k, amrex::Array4<const Real> const &state) noexcept {
-		    // int nmscalars = Physics_Traits<NewProblem>::numMassScalars;
+	// compute (total) density projection
+	proj["mass_outflow"] = quokka::diagnostics::ComputePlaneProjection<amrex::ReduceOpSum>(
+	    state_new_cc_, finestLevel(), geom, ref_ratio, dir, [=] AMREX_GPU_DEVICE(int i, int j, int k, amrex::Array4<const Real> const &state) noexcept {
 		    Real const rho = state(i, j, k, HydroSystem<NewProblem>::density_index);
-		    Real const vx3 = state(i, j, k, HydroSystem<NewProblem>::x3Momentum_index) / rho;
+			Real const vx3 = state(i, j, k, HydroSystem<NewProblem>::x3Momentum_index) / rho;
 		    return (rho * vx3);
-	    },
-	    dir);
+	    });
 
-	proj["hot_mass_outflow"] = computePlaneProjection<amrex::ReduceOpSum>(
-	    [=] AMREX_GPU_DEVICE(int i, int j, int k, amrex::Array4<const Real> const &state) noexcept {
+	proj["hot_mass_outflow"] = quokka::diagnostics::ComputePlaneProjection<amrex::ReduceOpSum>(
+	    state_new_cc_, finestLevel(), geom, ref_ratio, dir, [=] AMREX_GPU_DEVICE(int i, int j, int k, amrex::Array4<const Real> const &state) noexcept {
 		    double flux;
 		    Real const rho = state(i, j, k, HydroSystem<NewProblem>::density_index);
 		    Real const vx3 = state(i, j, k, HydroSystem<NewProblem>::x3Momentum_index) / rho;
@@ -521,11 +534,10 @@ template <> auto QuokkaSimulation<NewProblem>::ComputeProjections(const int dir)
 			    flux = 0.0;
 		    }
 		    return flux;
-	    },
-	    dir);
+	    });
 
-	proj["warm_mass_outflow"] = computePlaneProjection<amrex::ReduceOpSum>(
-	    [=] AMREX_GPU_DEVICE(int i, int j, int k, amrex::Array4<const Real> const &state) noexcept {
+	proj["warm_mass_outflow"] = quokka::diagnostics::ComputePlaneProjection<amrex::ReduceOpSum>(
+	    state_new_cc_, finestLevel(), geom, ref_ratio, dir, [=] AMREX_GPU_DEVICE(int i, int j, int k, amrex::Array4<const Real> const &state) noexcept {
 		    double flux;
 		    Real const rho = state(i, j, k, HydroSystem<NewProblem>::density_index);
 		    Real const vx3 = state(i, j, k, HydroSystem<NewProblem>::x3Momentum_index) / rho;
@@ -538,20 +550,18 @@ template <> auto QuokkaSimulation<NewProblem>::ComputeProjections(const int dir)
 			    flux = 0.0;
 		    }
 		    return flux;
-	    },
-	    dir);
+	    });
 
-	proj["scalar0_outflow"] = computePlaneProjection<amrex::ReduceOpSum>(
-	    [=] AMREX_GPU_DEVICE(int i, int j, int k, amrex::Array4<const Real> const &state) noexcept {
+	proj["scalar0_outflow"] = quokka::diagnostics::ComputePlaneProjection<amrex::ReduceOpSum>(
+	    state_new_cc_, finestLevel(), geom, ref_ratio, dir, [=] AMREX_GPU_DEVICE(int i, int j, int k, amrex::Array4<const Real> const &state) noexcept {
 		    Real const rho = state(i, j, k, HydroSystem<NewProblem>::density_index);
 		    Real const rhoZ = state(i, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex);
 		    Real const vz = state(i, j, k, HydroSystem<NewProblem>::x3Momentum_index) / rho;
 		    return (rhoZ * vz);
-	    },
-	    dir);
+	    });
 
-	proj["warm_scalar0_outflow"] = computePlaneProjection<amrex::ReduceOpSum>(
-	    [=] AMREX_GPU_DEVICE(int i, int j, int k, amrex::Array4<const Real> const &state) noexcept {
+	proj["warm_scalar0_outflow"] = quokka::diagnostics::ComputePlaneProjection<amrex::ReduceOpSum>(
+	    state_new_cc_, finestLevel(), geom, ref_ratio, dir, [=] AMREX_GPU_DEVICE(int i, int j, int k, amrex::Array4<const Real> const &state) noexcept {
 		    double flux;
 		    Real const rho = state(i, j, k, HydroSystem<NewProblem>::density_index);
 		    Real const rhoZ = state(i, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex);
@@ -565,11 +575,10 @@ template <> auto QuokkaSimulation<NewProblem>::ComputeProjections(const int dir)
 			    flux = 0.0;
 		    }
 		    return flux;
-	    },
-	    dir);
+	    });
 
-	proj["hot_scalar0_outflow"] = computePlaneProjection<amrex::ReduceOpSum>(
-	    [=] AMREX_GPU_DEVICE(int i, int j, int k, amrex::Array4<const Real> const &state) noexcept {
+	proj["hot_scalar0_outflow"] = quokka::diagnostics::ComputePlaneProjection<amrex::ReduceOpSum>(
+	    state_new_cc_, finestLevel(), geom, ref_ratio, dir, [=] AMREX_GPU_DEVICE(int i, int j, int k, amrex::Array4<const Real> const &state) noexcept {
 		    double flux;
 		    Real const rho = state(i, j, k, HydroSystem<NewProblem>::density_index);
 		    Real const rhoZ = state(i, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex);
@@ -583,20 +592,18 @@ template <> auto QuokkaSimulation<NewProblem>::ComputeProjections(const int dir)
 			    flux = 0.0;
 		    }
 		    return flux;
-	    },
-	    dir);
+	    });
 
-	proj["scalar1_outflow"] = computePlaneProjection<amrex::ReduceOpSum>(
-	    [=] AMREX_GPU_DEVICE(int i, int j, int k, amrex::Array4<const Real> const &state) noexcept {
+	proj["scalar1_outflow"] = quokka::diagnostics::ComputePlaneProjection<amrex::ReduceOpSum>(
+	    state_new_cc_, finestLevel(), geom, ref_ratio, dir, [=] AMREX_GPU_DEVICE(int i, int j, int k, amrex::Array4<const Real> const &state) noexcept {
 		    Real const rho = state(i, j, k, HydroSystem<NewProblem>::density_index);
 		    Real const rhoZ = state(i, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex+1);
 		    Real const vz = state(i, j, k, HydroSystem<NewProblem>::x3Momentum_index) / rho;
 		    return (rhoZ * vz);
-	    },
-	    dir);
+	    });
 
-	proj["warm_scalar1_outflow"] = computePlaneProjection<amrex::ReduceOpSum>(
-	    [=] AMREX_GPU_DEVICE(int i, int j, int k, amrex::Array4<const Real> const &state) noexcept {
+	proj["warm_scalar1_outflow"] = quokka::diagnostics::ComputePlaneProjection<amrex::ReduceOpSum>(
+	    state_new_cc_, finestLevel(), geom, ref_ratio, dir, [=] AMREX_GPU_DEVICE(int i, int j, int k, amrex::Array4<const Real> const &state) noexcept {
 		    double flux;
 		    Real const rho = state(i, j, k, HydroSystem<NewProblem>::density_index);
 		    Real const rhoZ = state(i, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex+1);
@@ -610,11 +617,10 @@ template <> auto QuokkaSimulation<NewProblem>::ComputeProjections(const int dir)
 			    flux = 0.0;
 		    }
 		    return flux;
-	    },
-	    dir);
+	    });
 
-	proj["hot_scalar1_outflow"] = computePlaneProjection<amrex::ReduceOpSum>(
-	    [=] AMREX_GPU_DEVICE(int i, int j, int k, amrex::Array4<const Real> const &state) noexcept {
+	proj["hot_scalar1_outflow"] = quokka::diagnostics::ComputePlaneProjection<amrex::ReduceOpSum>(
+	    state_new_cc_, finestLevel(), geom, ref_ratio, dir, [=] AMREX_GPU_DEVICE(int i, int j, int k, amrex::Array4<const Real> const &state) noexcept {
 		    double flux;
 		    Real const rho = state(i, j, k, HydroSystem<NewProblem>::density_index);
 		    Real const rhoZ = state(i, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex+1);
@@ -628,21 +634,19 @@ template <> auto QuokkaSimulation<NewProblem>::ComputeProjections(const int dir)
 			    flux = 0.0;
 		    }
 		    return flux;
-	    },
-	    dir);
+	    });
 
 
-	proj["scalar2_outflow"] = computePlaneProjection<amrex::ReduceOpSum>(
-	    [=] AMREX_GPU_DEVICE(int i, int j, int k, amrex::Array4<const Real> const &state) noexcept {
+	proj["scalar2_outflow"] = quokka::diagnostics::ComputePlaneProjection<amrex::ReduceOpSum>(
+	    state_new_cc_, finestLevel(), geom, ref_ratio, dir, [=] AMREX_GPU_DEVICE(int i, int j, int k, amrex::Array4<const Real> const &state) noexcept {
 		    Real const rho = state(i, j, k, HydroSystem<NewProblem>::density_index);
 		    Real const rhoZ = state(i, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex+2);
 		    Real const vz = state(i, j, k, HydroSystem<NewProblem>::x3Momentum_index) / rho;
 		    return (rhoZ * vz);
-	    },
-	    dir);
+	    });
 
-	proj["warm_scalar2_outflow"] = computePlaneProjection<amrex::ReduceOpSum>(
-	    [=] AMREX_GPU_DEVICE(int i, int j, int k, amrex::Array4<const Real> const &state) noexcept {
+	proj["warm_scalar2_outflow"] = quokka::diagnostics::ComputePlaneProjection<amrex::ReduceOpSum>(
+	    state_new_cc_, finestLevel(), geom, ref_ratio, dir, [=] AMREX_GPU_DEVICE(int i, int j, int k, amrex::Array4<const Real> const &state) noexcept {
 		    double flux;
 		    Real const rho = state(i, j, k, HydroSystem<NewProblem>::density_index);
 		    Real const rhoZ = state(i, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex+2);
@@ -656,11 +660,10 @@ template <> auto QuokkaSimulation<NewProblem>::ComputeProjections(const int dir)
 			    flux = 0.0;
 		    }
 		    return flux;
-	    },
-	    dir);
+	    });
 
-	proj["hot_scalar2_outflow"] = computePlaneProjection<amrex::ReduceOpSum>(
-	    [=] AMREX_GPU_DEVICE(int i, int j, int k, amrex::Array4<const Real> const &state) noexcept {
+	proj["hot_scalar2_outflow"] = quokka::diagnostics::ComputePlaneProjection<amrex::ReduceOpSum>(
+	    state_new_cc_, finestLevel(), geom, ref_ratio, dir, [=] AMREX_GPU_DEVICE(int i, int j, int k, amrex::Array4<const Real> const &state) noexcept {
 		    double flux;
 		    Real const rho = state(i, j, k, HydroSystem<NewProblem>::density_index);
 		    Real const rhoZ = state(i, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex+2);
@@ -674,36 +677,32 @@ template <> auto QuokkaSimulation<NewProblem>::ComputeProjections(const int dir)
 			    flux = 0.0;
 		    }
 		    return flux;
-	    },
-	    dir);
+	    });
 
 
-	proj["rho"] = computePlaneProjection<amrex::ReduceOpSum>(
-	    [=] AMREX_GPU_DEVICE(int i, int j, int k, amrex::Array4<const Real> const &state) noexcept {
+	proj["rho"] = quokka::diagnostics::ComputePlaneProjection<amrex::ReduceOpSum>(
+	    state_new_cc_, finestLevel(), geom, ref_ratio, dir, [=] AMREX_GPU_DEVICE(int i, int j, int k, amrex::Array4<const Real> const &state) noexcept {
 		    Real const rho = state(i, j, k, HydroSystem<NewProblem>::density_index);
 		    return (rho);
-	    },
-	    dir);
+	    });
 
-	proj["scalar0"] = computePlaneProjection<amrex::ReduceOpSum>(
-	    [=] AMREX_GPU_DEVICE(int i, int j, int k, amrex::Array4<const Real> const &state) noexcept {
+	proj["scalar0"] = quokka::diagnostics::ComputePlaneProjection<amrex::ReduceOpSum>(
+	    state_new_cc_, finestLevel(), geom, ref_ratio, dir, [=] AMREX_GPU_DEVICE(int i, int j, int k, amrex::Array4<const Real> const &state) noexcept {
 		    Real const rhoZ = state(i, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex);
 		    return (rhoZ);
-	    },
-	    dir);
-	proj["scalar1"] = computePlaneProjection<amrex::ReduceOpSum>(
-	    [=] AMREX_GPU_DEVICE(int i, int j, int k, amrex::Array4<const Real> const &state) noexcept {
+	    });
+
+	proj["scalar1"] = quokka::diagnostics::ComputePlaneProjection<amrex::ReduceOpSum>(
+	    state_new_cc_, finestLevel(), geom, ref_ratio, dir, [=] AMREX_GPU_DEVICE(int i, int j, int k, amrex::Array4<const Real> const &state) noexcept {
 		    Real const rhoZ = state(i, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex+1);
 		    return (rhoZ);
-	    },
-	    dir);
+	    });
 
-	proj["scalar2"] = computePlaneProjection<amrex::ReduceOpSum>(
-	    [=] AMREX_GPU_DEVICE(int i, int j, int k, amrex::Array4<const Real> const &state) noexcept {
+	proj["scalar2"] = quokka::diagnostics::ComputePlaneProjection<amrex::ReduceOpSum>(
+	    state_new_cc_, finestLevel(), geom, ref_ratio, dir, [=] AMREX_GPU_DEVICE(int i, int j, int k, amrex::Array4<const Real> const &state) noexcept {
 		    Real const rhoZ = state(i, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex+2);
 		    return (rhoZ);
-	    },
-	    dir);	
+	    });	
 	return proj;
 }
 
