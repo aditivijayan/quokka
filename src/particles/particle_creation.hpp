@@ -184,6 +184,8 @@ template <> struct ParticleCreationTraits<ParticleType::StellarPop> {
 				p.rdata(mass_idx + 1) = state_arr(i, j, k, HydroSystem<problem_t>::x1Momentum_index) / cell_density;
 				p.rdata(mass_idx + 2) = state_arr(i, j, k, HydroSystem<problem_t>::x2Momentum_index) / cell_density;
 				p.rdata(mass_idx + 3) = state_arr(i, j, k, HydroSystem<problem_t>::x3Momentum_index) / cell_density;
+				// Set fate to low mass star
+				p.rdata(mass_idx + 4) = static_cast<int>(StellarPopFate::LowMass);
 
 				// Update cell density (remove mass that was given to particle)
 				state_arr(i, j, k, HydroSystem<problem_t>::density_index) = 0.5 * cell_density;
@@ -200,7 +202,7 @@ template <> struct ParticleCreationTraits<ParticleType::StellarPop> {
 							  ParticleCreationTraits<ParticleType::StellarPop>::template ParticleCreator>(container, mass_idx, state, lev,
 															       current_time, dt);
 	}
-};
+}; // ParticleCreationTraits<ParticleType::StellarPop>
 
 } // namespace quokka
 
