@@ -432,9 +432,6 @@ template <typename problem_t> class PhysicsParticleRegister
 		if (type == ParticleType::Rad) {
 			descriptor = std::make_unique<PhysicsParticleDescriptor<ContainerType, problem_t, ParticleType::Rad>>(
 			    mass_idx, lum_idx, birth_time_idx, hydro_interact, allows_creation, container);
-		} else if (type == ParticleType::StellarPop) {
-			descriptor = std::make_unique<PhysicsParticleDescriptor<ContainerType, problem_t, ParticleType::StellarPop>>(
-			    mass_idx, lum_idx, birth_time_idx, hydro_interact, allows_creation, container);
 		}
 #if AMREX_SPACEDIM == 3
 		else if (type == ParticleType::CIC) {
@@ -442,6 +439,9 @@ template <typename problem_t> class PhysicsParticleRegister
 			    mass_idx, lum_idx, birth_time_idx, hydro_interact, allows_creation, container);
 		} else if (type == ParticleType::CICRad) {
 			descriptor = std::make_unique<PhysicsParticleDescriptor<ContainerType, problem_t, ParticleType::CICRad>>(
+			    mass_idx, lum_idx, birth_time_idx, hydro_interact, allows_creation, container);
+		} else if (type == ParticleType::StellarPop) {
+			descriptor = std::make_unique<PhysicsParticleDescriptor<ContainerType, problem_t, ParticleType::StellarPop>>(
 			    mass_idx, lum_idx, birth_time_idx, hydro_interact, allows_creation, container);
 		}
 #endif // AMREX_SPACEDIM == 3

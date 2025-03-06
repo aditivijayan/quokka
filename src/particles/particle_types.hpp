@@ -165,23 +165,30 @@ enum StellarPopParticleDataIdx {
 	StellarPopParticleVxIdx,       // Velocity in x direction
 	StellarPopParticleVyIdx,       // Velocity in y direction
 	StellarPopParticleVzIdx,       // Velocity in z direction
-	StellarPopParticleFateIdx,     // Fate of the stellar population
-	StellarPopParticleLumIdx       // Luminosity of the stellar population
+	StellarPopParticleLumIdx       // Base index for luminosity components
 };
 
-// Number of real components for StellarPop_particles, mass + 3 velocity components + fate + luminosity
+// Indices for stellar population particles integer components
+enum StellarPopParticleIntDataIdx {
+	StellarPopParticleFateIdx = 0  // Fate of the stellar population (integer component)
+};
+
+// Number of real components for StellarPop_particles, mass + 3 velocity components + luminosity
 template <typename problem_t>
 constexpr int StellarPopParticleRealComps = []() constexpr {
 	if constexpr (Physics_Traits<problem_t>::is_hydro_enabled && Physics_Traits<problem_t>::is_radiation_enabled) {
-		return 5 + Physics_Traits<problem_t>::nGroups; // mass, vx, vy, vz, fate, lum[nGroups]
+		return 4 + Physics_Traits<problem_t>::nGroups; // mass, vx, vy, vz, lum[nGroups]
 	} else {
-		return 5; // mass, vx, vy, vz, fate
+		return 4; // mass, vx, vy, vz
 	}
 }();
 
+// Number of integer components for StellarPop_particles
+constexpr int StellarPopParticleIntComps = 1; // fate
+
 // Type definitions for StellarPop_particles container and iterator
-template <typename problem_t> using StellarPopParticleContainer = amrex::AmrParticleContainer<StellarPopParticleRealComps<problem_t>>;
-template <typename problem_t> using StellarPopParticleIterator = amrex::ParIter<StellarPopParticleRealComps<problem_t>>;
+template <typename problem_t> using StellarPopParticleContainer = amrex::AmrParticleContainer<StellarPopParticleRealComps<problem_t>, StellarPopParticleIntComps>;
+template <typename problem_t> using StellarPopParticleIterator = amrex::ParIter<StellarPopParticleRealComps<problem_t>, StellarPopParticleIntComps>;
 
 #endif // AMREX_SPACEDIM == 3
 
