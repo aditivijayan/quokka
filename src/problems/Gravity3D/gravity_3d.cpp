@@ -25,6 +25,8 @@
 struct BinaryOrbit {
 };
 
+constexpr int particle_per_cell = 2;
+
 template <> struct quokka::EOS_Traits<BinaryOrbit> {
 	static constexpr double gamma = 1.0;	     // isothermal
 	static constexpr double cs_isothermal = 3.0; //
@@ -61,6 +63,99 @@ template <> struct Physics_Traits<BinaryOrbit> {
 	static constexpr double c_light = 1.0;
 	static constexpr double radiation_constant = 1.0;
 };
+
+namespace quokka
+{
+// Specialization for CIC particles
+template <> struct ParticleCreationTraits<ParticleType::CIC> {
+	// Specialized nested ParticleChecker for CIC particles
+	template <typename problem_t> struct ParticleChecker {
+		amrex::Real param1 = particle_param1;
+		amrex::Real param2 = particle_param2;
+
+		AMREX_GPU_DEVICE auto operator()(amrex::Array4<const amrex::Real> const &state_arr, int i, int j, int k,
+						 amrex::GpuArray<amrex::Real, AMREX_SPACEDIM> const &dx, amrex::Real current_time, amrex::Real dt) const -> int
+		{
+			// A simple demonstration of particle creation
+			// Could check density threshold or other state-based conditions
+			amrex::ignore_unused(state_arr, dx);
+			const int spacing = 16;
+			const bool is_create_particle_1 = current_time <= param1 && current_time + dt > param1;
+			const bool is_create_particle_2 = current_time <= param2 && current_time + dt > param2;
+			return ((is_create_particle_1 || is_create_particle_2) && (i != 0 && i % spacing == 0) && (j != 0 && j % spacing == 0) &&
+				(k != 0 && k % spacing == 0))
+				   ? particle_per_cell
+				   : 0;
+		}
+	};
+
+	// Specialized nested ParticleCreator for CIC particles
+	template <typename problem_t> struct ParticleCreator {
+		int mass_idx;
+		int cpu_id;
+		amrex::Long pid_start;
+		amrex::Real param1 = particle_param1;
+		amrex::Real param2 = particle_param2;
+
+		AMREX_GPU_HOST_DEVICE
+		ParticleCreator(int mass_index, int processor_id, amrex::Long particle_id_start)
+		    : mass_idx(mass_index), cpu_id(processor_id), pid_start(particle_id_start)
+		{
+		}
+
+		template <typename ParticleType, typename StateArray>
+		AMREX_GPU_DEVICE void operator()(ParticleType *particles, int num_particles, StateArray const &state_arr, int i, int j, int k,
+						 amrex::GpuArray<amrex::Real, AMREX_SPACEDIM> const &dx,
+						 amrex::GpuArray<amrex::Real, AMREX_SPACEDIM> const &plo, amrex::Long base_offset) const
+		{
+			if (mass_idx + 3 < ParticleType::NReal) {
+				// Calculate common values for all particles
+				const amrex::Real cell_volume = AMREX_D_TERM(dx[0], *dx[1], *dx[2]);
+				const amrex::Real cell_density = state_arr(i, j, k, HydroSystem<problem_t>::density_index);
+				const amrex::Real cell_mass = cell_density * cell_volume;
+				const amrex::Real particle_mass = 0.5 * cell_mass / num_particles; // Divide mass among particles
+
+				const amrex::Real vx = state_arr(i, j, k, HydroSystem<problem_t>::x1Momentum_index) / cell_density;
+				const amrex::Real vy = state_arr(i, j, k, HydroSystem<problem_t>::x2Momentum_index) / cell_density;
+				const amrex::Real vz = state_arr(i, j, k, HydroSystem<problem_t>::x3Momentum_index) / cell_density;
+
+				// Create all particles
+				for (int p_idx = 0; p_idx < num_particles; ++p_idx) {
+					auto &p = particles[p_idx]; // NOLINT
+
+					// Set particle position (all at cell center for now)
+					p.pos(0) = plo[0] + (i + 0.5) * dx[0];
+					p.pos(1) = plo[1] + (j + 0.5) * dx[1];
+					p.pos(2) = plo[2] + (k + 0.5) * dx[2];
+
+					// Set particle ID and CPU
+					p.id() = pid_start + base_offset + p_idx;
+					p.cpu() = cpu_id;
+
+					// Initialize particle properties
+					p.rdata(mass_idx) = particle_mass;
+					p.rdata(mass_idx + 1) = vx;
+					p.rdata(mass_idx + 2) = vy;
+					p.rdata(mass_idx + 3) = vz;
+				}
+
+				// Update cell density (remove mass that was given to particles)
+				state_arr(i, j, k, HydroSystem<problem_t>::density_index) = 0.5 * cell_density;
+			}
+		}
+	};
+
+	// Main method to create particles - uses the helper implementation
+	template <typename problem_t, typename ContainerType>
+	static void createParticles(ContainerType *container, int mass_idx, amrex::MultiFab &state, int lev, amrex::Real current_time, amrex::Real dt)
+	{
+		// Use the common implementation with our checker and creator types
+		ParticleCreationImpl::createParticlesImpl<problem_t, ContainerType, ParticleCreationTraits<ParticleType::CIC>::template ParticleChecker,
+							  ParticleCreationTraits<ParticleType::CIC>::template ParticleCreator>(container, mass_idx, state, lev,
+															       current_time, dt);
+	}
+};
+} // namespace quokka
 
 template <> void QuokkaSimulation<BinaryOrbit>::setInitialConditionsOnGrid(quokka::grid const &grid_elem)
 {
@@ -139,7 +234,7 @@ auto problem_main() -> int
 	double position_error = 0.0;
 	double position_norm = 0.0;
 
-	const int n_particle_expect = (3 * 3 * 3) * 1; // 2 particles from the initial condition, (3*3*3) particles from the creator
+	const int n_particle_expect = 2 + (3 * 3 * 3) * 2 * particle_per_cell; // 2 particles from the initial condition, (3*3*3)*2 particles from the creator
 
 	int status = 0; // Initialize to success
 
