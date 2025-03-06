@@ -414,6 +414,8 @@ template <typename problem_t> class PhysicsParticleRegister
 				return "CIC_particles";
 			case ParticleType::CICRad:
 				return "CICRad_particles";
+			case ParticleType::StellarPop:
+				return "StellarPop_particles";
 			default:
 				return "Unknown_particles";
 		}
@@ -429,6 +431,9 @@ template <typename problem_t> class PhysicsParticleRegister
 		// Create the appropriate descriptor based on the particle type
 		if (type == ParticleType::Rad) {
 			descriptor = std::make_unique<PhysicsParticleDescriptor<ContainerType, problem_t, ParticleType::Rad>>(
+			    mass_idx, lum_idx, birth_time_idx, hydro_interact, allows_creation, container);
+		} else if (type == ParticleType::StellarPop) {
+			descriptor = std::make_unique<PhysicsParticleDescriptor<ContainerType, problem_t, ParticleType::StellarPop>>(
 			    mass_idx, lum_idx, birth_time_idx, hydro_interact, allows_creation, container);
 		}
 #if AMREX_SPACEDIM == 3

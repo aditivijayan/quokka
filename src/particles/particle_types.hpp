@@ -18,7 +18,8 @@ enum class ParticleSwitch : unsigned int {
 	None = 0U,	      // No particles, = 0b0000
 	CIC = bitflag<1>(),   // Cloud-In-Cell (gravitating) particles, = 0b0001
 	Rad = bitflag<2>(),   // Radiation particles, = 0b0010
-	CICRad = bitflag<3>() // Combined gravitating-radiating particles, = 0b0100
+	CICRad = bitflag<3>(), // Combined gravitating-radiating particles, = 0b0100
+	StellarPop = bitflag<4>() // Stellar population particles, = 0b1000
 };
 
 // Enable bitwise operations on the enum class
@@ -68,7 +69,8 @@ namespace quokka
 enum class ParticleType {
 	Rad,   // Radiation particles
 	CIC,   // Gravitating particles
-	CICRad // Gravitating radiation particles
+	CICRad, // Gravitating radiation particles
+	StellarPop // Stellar population particles
 };
 
 // Global particle parameters
@@ -147,6 +149,39 @@ constexpr int CICRadParticleRealComps = []() constexpr {
 // Type definitions for CICRad_particles container and iterator
 template <typename problem_t> using CICRadParticleContainer = amrex::AmrParticleContainer<CICRadParticleRealComps<problem_t>>;
 template <typename problem_t> using CICRadParticleIterator = amrex::ParIter<CICRadParticleRealComps<problem_t>>;
+
+//-------------------- Stellar Population particles --------------------
+
+// Enum for stellar population fate
+enum class StellarPopFate : int {
+	LowMass = 0, // Low mass star fate
+	SN,          // Supernova fate
+	Nothing      // No specific fate
+};
+
+// Indices for stellar population particles (StellarPop_particles), mass + 3 velocity components + fate + luminosity
+enum StellarPopParticleDataIdx {
+	StellarPopParticleMassIdx = 0, // Mass of the particle
+	StellarPopParticleVxIdx,       // Velocity in x direction
+	StellarPopParticleVyIdx,       // Velocity in y direction
+	StellarPopParticleVzIdx,       // Velocity in z direction
+	StellarPopParticleFateIdx,     // Fate of the stellar population
+	StellarPopParticleLumIdx       // Luminosity of the stellar population
+};
+
+// Number of real components for StellarPop_particles, mass + 3 velocity components + fate + luminosity
+template <typename problem_t>
+constexpr int StellarPopParticleRealComps = []() constexpr {
+	if constexpr (Physics_Traits<problem_t>::is_hydro_enabled && Physics_Traits<problem_t>::is_radiation_enabled) {
+		return 5 + Physics_Traits<problem_t>::nGroups; // mass, vx, vy, vz, fate, lum[nGroups]
+	} else {
+		return 5; // mass, vx, vy, vz, fate
+	}
+}();
+
+// Type definitions for StellarPop_particles container and iterator
+template <typename problem_t> using StellarPopParticleContainer = amrex::AmrParticleContainer<StellarPopParticleRealComps<problem_t>>;
+template <typename problem_t> using StellarPopParticleIterator = amrex::ParIter<StellarPopParticleRealComps<problem_t>>;
 
 #endif // AMREX_SPACEDIM == 3
 
