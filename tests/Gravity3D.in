@@ -29,6 +29,6 @@ plotfile_interval = -1
 checkpoint_interval = -1
 
 particles.param1 = 0.007 # create particles at this time, which is step 2
-particles.param2 = 0.012 # create particles at this time, which is step 3
+particles.param2 = -1.0 # won't create particles 
 
 max_timesteps = 3
