@@ -2190,8 +2190,9 @@ template <typename problem_t> void AMRSimulation<problem_t>::InitPhyParticles()
 		StellarPopParticles->SetVerbose(0);
 
 		// Register with particle register - StellarPop particles allow creation
+		const bool stellarpop_allows_destruction = false;
 		particleRegister_.registerParticleType(quokka::ParticleType::StellarPop, quokka::StellarPopParticleMassIdx, quokka::StellarPopParticleLumIdx,
-						       -1, false, true, StellarPopParticles.get());
+						       -1, false, true, StellarPopParticles.get(), stellarpop_allows_destruction);
 
 		// Initialize particles through derived class
 		createInitialStellarPopParticles();
