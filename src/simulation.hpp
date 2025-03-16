@@ -230,6 +230,7 @@ template <typename problem_t> class AMRSimulation : public amrex::AmrCore
 #if AMREX_SPACEDIM == 3
 	virtual void createInitialCICParticles() = 0;
 	virtual void createInitialCICRadParticles() = 0;
+	virtual void createInitialStellarPopParticles() = 0;
 	// Test particles have integer components, and InitFromAsciiFile does not support integer components, so we do not allow creating them at the start
 	// of the simulation
 #endif // AMREX_SPACEDIM == 3
@@ -2970,6 +2971,7 @@ template <typename problem_t> void AMRSimulation<problem_t>::ReadCheckpointFile(
 
 	if constexpr (Particle_Traits<problem_t>::particle_switch & ParticleSwitch::StellarPop) {
 		AMREX_ASSERT(StellarPopParticles == nullptr);
+		const bool stellarpop_allows_destruction = false;
 		StellarPopParticles = std::make_unique<quokka::StellarPopParticleContainer<problem_t>>(this);
 		particleRegister_.registerStarParticleType(StellarPopParticles.get(), quokka::ParticleType::StellarPop, quokka::StellarPopParticleMassIdx,
 						       quokka::StellarPopParticleLumIdx, quokka::StellarPopParticleBirthTimeIdx, true, stellarpop_allows_destruction,

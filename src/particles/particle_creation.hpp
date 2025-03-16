@@ -180,35 +180,48 @@ template <> struct ParticleCreationTraits<ParticleType::StellarPop> {
 		}
 
 		template <typename ParticleType, typename StateArray>
-		AMREX_GPU_DEVICE void operator()(ParticleType &p, StateArray const &state_arr, int i, int j, int k,
+		AMREX_GPU_DEVICE void operator()(ParticleType *particles, int num_particles, StateArray const &state_arr, int i, int j, int k,
 						 amrex::GpuArray<amrex::Real, AMREX_SPACEDIM> const &dx,
-						 amrex::GpuArray<amrex::Real, AMREX_SPACEDIM> const &plo, amrex::Long particle_offset) const
+						 amrex::GpuArray<amrex::Real, AMREX_SPACEDIM> const &plo, amrex::Long base_offset) const
 		{
 			// A simple demonstration of particle creation
 			if (mass_idx + 3 < ParticleType::NReal) {
-				p.pos(0) = plo[0] + (i + 0.5) * dx[0];
-				p.pos(1) = plo[1] + (j + 0.5) * dx[1];
-				p.pos(2) = plo[2] + (k + 0.5) * dx[2];
-
-				// Set particle ID and CPU
-				p.id() = pid_start + particle_offset;
-				p.cpu() = cpu_id;
-
-				// Set particle mass and velocities
-				const amrex::Real cell_volume = AMREX_D_TERM(dx[0], *dx[1], *dx[2]);
+				// Calculate common values for all particles
 				const amrex::Real cell_density = state_arr(i, j, k, HydroSystem<problem_t>::density_index);
-				const amrex::Real cell_mass = cell_density * cell_volume;
 
-				// Initialize particle properties
-				p.rdata(mass_idx) = 0.5 * cell_mass;
-				p.rdata(mass_idx + 1) = state_arr(i, j, k, HydroSystem<problem_t>::x1Momentum_index) / cell_density;
-				p.rdata(mass_idx + 2) = state_arr(i, j, k, HydroSystem<problem_t>::x2Momentum_index) / cell_density;
-				p.rdata(mass_idx + 3) = state_arr(i, j, k, HydroSystem<problem_t>::x3Momentum_index) / cell_density;
-				// Set fate to low mass star
-				p.idata(StellarPopParticleFateIdx) = static_cast<int>(StellarPopFate::LowMass);
+				const amrex::Real vx = state_arr(i, j, k, HydroSystem<problem_t>::x1Momentum_index) / cell_density;
+				const amrex::Real vy = state_arr(i, j, k, HydroSystem<problem_t>::x2Momentum_index) / cell_density;
+				const amrex::Real vz = state_arr(i, j, k, HydroSystem<problem_t>::x3Momentum_index) / cell_density;
 
-				// Update cell density (remove mass that was given to particle)
-				state_arr(i, j, k, HydroSystem<problem_t>::density_index) = 0.5 * cell_density;
+				// Create all particles
+				for (int p_idx = 0; p_idx < num_particles; ++p_idx) {
+					auto &p = particles[p_idx]; // NOLINT
+
+					// Set particle position at cell center
+					p.pos(0) = plo[0] + (i + 0.5) * dx[0];
+					p.pos(1) = plo[1] + (j + 0.5) * dx[1];
+					p.pos(2) = plo[2] + (k + 0.5) * dx[2];
+
+					// Set particle ID and CPU
+					p.id() = pid_start + base_offset + p_idx;
+					p.cpu() = cpu_id;
+
+					// Initialize particle properties
+					p.rdata(mass_idx) = p_idx == 0 ? 1.0 : 1.0e-2;
+					p.rdata(mass_idx + 1) = vx;
+					p.rdata(mass_idx + 2) = vy;
+					p.rdata(mass_idx + 3) = vz;
+
+					// set birth time to current time
+					p.rdata(birth_time_index) = current_time;
+
+					// Set particle evolution stage
+					p.idata(evolution_stage_index) = p_idx == 0 ? static_cast<int>(StellarEvolutionStage::SNProgenitor)
+										    : static_cast<int>(StellarEvolutionStage::LowMassStar);
+				}
+
+				// Update cell density. For testing purposes, we remove a tiny amount of mass from the cell.
+				state_arr(i, j, k, HydroSystem<problem_t>::density_index) -= 1.0e-20;
 			}
 		}
 	};
