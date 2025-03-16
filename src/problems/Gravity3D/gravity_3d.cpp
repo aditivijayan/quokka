@@ -246,15 +246,13 @@ template <> void QuokkaSimulation<BinaryOrbit>::setInitialConditionsOnGrid(quokk
 
 template <> void QuokkaSimulation<BinaryOrbit>::computeAfterEvolve(amrex::Vector<amrex::Real> &initSumCons) {}
 
-// Integer particle data is not supported by InitialFromAsciiFile yet
-// template <> void QuokkaSimulation<BinaryOrbit>::createInitialStellarPopParticles()
-// {
-// 	// read particles from ASCII file
-// 	const int nreal_extra = 4; // mass vx vy vz
-// 	const int nint_extra = 1; // fate
-// 	StellarPopParticles->SetVerbose(1);
-// 	StellarPopParticles->InitFromAsciiFile("Gravity3D.txt", nreal_extra, nint_extra);
-// }
+template <> void QuokkaSimulation<BinaryOrbit>::createInitialCICParticles()
+{
+	// read particles from ASCII file
+	const int nreal_extra = 4; // mass vx vy vz
+	CICParticles->SetVerbose(1);
+	CICParticles->InitFromAsciiFile("Gravity3D.txt", nreal_extra, nullptr);
+}
 
 auto problem_main() -> int
 {
@@ -376,7 +374,7 @@ auto problem_main() -> int
 		status = 1;
 		if (relative_error < max_err_tol && n_particle_test == n_expected_test_particles && SN_remnant_mass_rel_err < max_err_tol_mass) {
 			status = 0;
-			amrex::Print() << "Number of particles matches expected.\n";
+			amrex::Print() << "Relative error within tolerance.\n";
 		}
 	}
 

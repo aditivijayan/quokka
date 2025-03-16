@@ -139,11 +139,15 @@ template <ParticleType particleType> struct ParticleCreationTraits {
 template <> struct ParticleCreationTraits<ParticleType::StellarPop> {
 	// Specialized nested ParticleChecker for StellarPop particles
 	template <typename problem_t> struct ParticleChecker {
+		amrex::Real current_time;
+		amrex::Real dt;
 		amrex::Real param1 = particle_param1;
 		amrex::Real param2 = particle_param2;
 
+		AMREX_GPU_HOST_DEVICE ParticleChecker(amrex::Real current_time, amrex::Real dt) : current_time(current_time), dt(dt) {}
+
 		AMREX_GPU_DEVICE auto operator()(amrex::Array4<const amrex::Real> const &state_arr, int i, int j, int k,
-						 amrex::GpuArray<amrex::Real, AMREX_SPACEDIM> const &dx, amrex::Real current_time, amrex::Real dt) const -> bool
+						 amrex::GpuArray<amrex::Real, AMREX_SPACEDIM> const &dx) const -> bool
 		{
 			// A simple demonstration of particle creation
 			// Could check density threshold or other state-based conditions
@@ -159,14 +163,19 @@ template <> struct ParticleCreationTraits<ParticleType::StellarPop> {
 	// Specialized nested ParticleCreator for StellarPop particles
 	template <typename problem_t> struct ParticleCreator {
 		int mass_idx;
+		int birth_time_index;
+		int evolution_stage_index;
 		int cpu_id;
 		amrex::Long pid_start;
+		amrex::Real current_time;
 		amrex::Real param1 = particle_param1;
 		amrex::Real param2 = particle_param2;
 
 		AMREX_GPU_HOST_DEVICE
-		ParticleCreator(int mass_index, int processor_id, amrex::Long particle_id_start)
-		    : mass_idx(mass_index), cpu_id(processor_id), pid_start(particle_id_start)
+		ParticleCreator(int mass_index, int birth_time_index, int processor_id, amrex::Long particle_id_start, int evolution_stage_index,
+				amrex::Real current_time)
+		    : mass_idx(mass_index), birth_time_index(birth_time_index), evolution_stage_index(evolution_stage_index), cpu_id(processor_id),
+		      pid_start(particle_id_start), current_time(current_time)
 		{
 		}
 
@@ -206,12 +215,13 @@ template <> struct ParticleCreationTraits<ParticleType::StellarPop> {
 
 	// Main method to create particles - uses the helper implementation
 	template <typename problem_t, typename ContainerType>
-	static void createParticles(ContainerType *container, int mass_idx, amrex::MultiFab &state, int lev, amrex::Real current_time, amrex::Real dt)
+	static void createParticles(ContainerType *container, int mass_idx, amrex::MultiFab &state, int lev, amrex::Real current_time, amrex::Real dt,
+				    int evolution_stage_index = -1, int birth_time_index = -1)
 	{
 		// Use the common implementation with our checker and creator types
 		ParticleCreationImpl::createParticlesImpl<problem_t, ContainerType, ParticleCreationTraits<ParticleType::StellarPop>::template ParticleChecker,
-							  ParticleCreationTraits<ParticleType::StellarPop>::template ParticleCreator>(container, mass_idx, state, lev,
-															       current_time, dt);
+							  ParticleCreationTraits<ParticleType::StellarPop>::template ParticleCreator>(container, mass_idx, state, lev, current_time, dt,
+															       evolution_stage_index, birth_time_index);
 	}
 }; // ParticleCreationTraits<ParticleType::StellarPop>
 
