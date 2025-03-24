@@ -176,7 +176,7 @@ template <typename problem_t> class AMRSimulation : public amrex::AmrCore
 	amrex::Real densityFloor_ = 0.0; // default
 	amrex::Real tempFloor_ = 0.0;	 // default
 
-	std::unordered_map<std::string, variant_t> simulationMetadata_;
+	YAML::Node simulationMetadata_;
 
 	// constructor
 	explicit AMRSimulation(amrex::Vector<amrex::BCRec> &BCs_cc, amrex::Vector<amrex::BCRec> &BCs_fc) : BCs_cc_(BCs_cc), BCs_fc_(BCs_fc) { initialize(); }
@@ -231,6 +231,8 @@ template <typename problem_t> class AMRSimulation : public amrex::AmrCore
 	virtual void createInitialCICParticles() = 0;
 	virtual void createInitialCICRadParticles() = 0;
 	virtual void createInitialStellarPopParticles() = 0;
+	// Test particles have integer components, and InitFromAsciiFile does not support integer components, so we do not allow creating them at the start
+	// of the simulation
 #endif // AMREX_SPACEDIM == 3
 	virtual void computeBeforeTimestep() = 0;
 	virtual void computeAfterTimestep() = 0;
@@ -467,6 +469,7 @@ template <typename problem_t> class AMRSimulation : public amrex::AmrCore
 	std::unique_ptr<quokka::CICParticleContainer> CICParticles;
 	std::unique_ptr<quokka::CICRadParticleContainer<problem_t>> CICRadParticles;
 	std::unique_ptr<quokka::StellarPopParticleContainer<problem_t>> StellarPopParticles;
+	std::unique_ptr<quokka::TestParticleContainer<problem_t>> TestParticles;
 #endif // AMREX_SPACEDIM == 3
 #endif
 
@@ -1013,7 +1016,16 @@ template <typename problem_t> void AMRSimulation<problem_t>::evolve()
 		kickParticlesAllLevels(dt_[0]);
 
 		// Use the new type-aware particle creation method
+		// TODO(cch): Need to take care of AMR subscycling
 		particleRegister_.createParticlesFromState(state_new_cc_[0], 0, cur_time, dt_[0]);
+
+		// Stellar evolution and SN deposition
+		// TODO(cch): Need to take care of AMR subcycling
+		particleRegister_.depositSN(state_new_cc_[0], 0, cur_time + dt_[0]);
+
+		// Use the new type-aware particle destruction method
+		// TODO(cch): Need to take care of AMR subcycling
+		particleRegister_.destroyParticles(0, cur_time, dt_[0]);
 #endif
 
 		cur_time += dt_[0];
@@ -1046,6 +1058,11 @@ template <typename problem_t> void AMRSimulation<problem_t>::evolve()
 		if (projectionInterval_ > 0 && (step + 1) % projectionInterval_ == 0) {
 			last_projection_step = step + 1;
 			WriteProjectionPlotfile();
+		}
+
+		// print particle statistics
+		if (quokka::particle_verbose > 0) {
+			particleRegister_.printParticleStatistics();
 		}
 
 		// write diagnostics
@@ -2134,8 +2151,8 @@ template <typename problem_t> void AMRSimulation<problem_t>::InitPhyParticles()
 		RadParticles->SetVerbose(0);
 
 		// Register with particle register - Rad particles do not allow creation
-		particleRegister_.registerParticleType(quokka::ParticleType::Rad, -1, quokka::RadParticleLumIdx, quokka::RadParticleBirthTimeIdx, false, false,
-						       RadParticles.get());
+		particleRegister_.registerParticleType(RadParticles.get(), quokka::ParticleType::Rad, -1, quokka::RadParticleLumIdx, false,
+						       quokka::RadParticleBirthTimeIdx);
 
 		// Initialize particles through derived class
 		createInitialRadParticles();
@@ -2150,7 +2167,7 @@ template <typename problem_t> void AMRSimulation<problem_t>::InitPhyParticles()
 		CICParticles->SetVerbose(0);
 
 		// Register with particle register - CIC particles allow creation
-		particleRegister_.registerParticleType(quokka::ParticleType::CIC, quokka::CICParticleMassIdx, -1, -1, false, true, CICParticles.get());
+		particleRegister_.registerParticleType(CICParticles.get(), quokka::ParticleType::CIC, quokka::CICParticleMassIdx, -1);
 
 		// Initialize particles through derived class
 		createInitialCICParticles();
@@ -2164,8 +2181,8 @@ template <typename problem_t> void AMRSimulation<problem_t>::InitPhyParticles()
 		CICRadParticles->SetVerbose(0);
 
 		// Register with particle register - CICRad particles do not allow creation
-		particleRegister_.registerParticleType(quokka::ParticleType::CICRad, quokka::CICRadParticleMassIdx, quokka::CICRadParticleLumIdx,
-						       quokka::CICRadParticleBirthTimeIdx, false, false, CICRadParticles.get());
+		particleRegister_.registerParticleType(CICRadParticles.get(), quokka::ParticleType::CICRad, quokka::CICRadParticleMassIdx,
+						       quokka::CICRadParticleLumIdx, false, quokka::CICRadParticleBirthTimeIdx);
 
 		// Initialize particles through derived class
 		createInitialCICRadParticles();
@@ -2179,11 +2196,27 @@ template <typename problem_t> void AMRSimulation<problem_t>::InitPhyParticles()
 		StellarPopParticles->SetVerbose(0);
 
 		// Register with particle register - StellarPop particles allow creation
-		particleRegister_.registerParticleType(quokka::ParticleType::StellarPop, quokka::StellarPopParticleMassIdx, quokka::StellarPopParticleLumIdx,
-						       -1, false, true, StellarPopParticles.get());
+		const bool stellarpop_allows_destruction = false;
+		particleRegister_.registerStarParticleType(StellarPopParticles.get(), quokka::ParticleType::StellarPop, quokka::StellarPopParticleMassIdx,
+						       quokka::StellarPopParticleLumIdx, quokka::StellarPopParticleBirthTimeIdx, true, stellarpop_allows_destruction,
+						       quokka::StellarPopParticleStageIdx, true);
 
 		// Initialize particles through derived class
 		createInitialStellarPopParticles();
+	}
+
+	if constexpr (Particle_Traits<problem_t>::particle_switch & ParticleSwitch::Test) {
+		AMREX_ASSERT(TestParticles == nullptr);
+
+		// Create particle container
+		TestParticles = std::make_unique<quokka::TestParticleContainer<problem_t>>(this);
+		TestParticles->SetVerbose(0);
+
+		// Register with particle register - Test particles have all features enabled
+		// mass_idx = 0, birth_time_idx = 4, stage_idx = 5, all bool attributes = true
+		particleRegister_.registerStarParticleType(TestParticles.get(), quokka::ParticleType::Test, quokka::TestParticleMassIdx,
+							   quokka::TestParticleLumIdx, quokka::TestParticleBirthTimeIdx, true, true,
+							   quokka::TestParticleStageIdx, true);
 	}
 #endif // AMREX_SPACEDIM == 3
 
@@ -2237,11 +2270,9 @@ template <typename problem_t> auto AMRSimulation<problem_t>::PlotFileMFAtLevel(c
 	int comp = 0;
 	int ncomp_per_dim_fc = 0;
 	int ncomp_tot_fc = 0;
-	int nghost_fc = 0;
 	if constexpr (Physics_Indices<problem_t>::nvarTotal_fc > 0) {
 		ncomp_per_dim_fc = Physics_Indices<problem_t>::nvarPerDim_fc;
 		ncomp_tot_fc = Physics_Indices<problem_t>::nvarTotal_fc;
-		nghost_fc = state_new_fc_[lev][0].nGrow();
 	}
 	const int ncomp_deriv = derivedNames_.size();
 	const int ncomp_plotMF = ncomp_cc + ncomp_tot_fc + ncomp_deriv;
@@ -2526,20 +2557,8 @@ template <typename problem_t> void AMRSimulation<problem_t>::WriteMetadataFile(s
 			amrex::FileOpenFailed(MetadataFileName);
 		}
 
-		// construct YAML from each (key, value) of simulationMetadata_
-		YAML::Emitter out;
-		out << YAML::BeginMap;
-		auto PrintVisitor = [&out](const auto &t) { out << YAML::Value << t; };
-		for (auto const &[key, value] : simulationMetadata_) {
-			out << YAML::Key << key;
-			std::visit(PrintVisitor, value);
-		}
-		out << YAML::EndMap;
-
 		// write YAML to MetadataFile
-		// (N.B. yaml-cpp is smart enough to emit sufficient digits for
-		//  floating-point types to represent their values to machine precision!)
-		MetadataFile << out.c_str() << '\n';
+		MetadataFile << simulationMetadata_ << '\n';
 	}
 }
 
@@ -2929,8 +2948,8 @@ template <typename problem_t> void AMRSimulation<problem_t>::ReadCheckpointFile(
 	if constexpr (Particle_Traits<problem_t>::particle_switch & ParticleSwitch::Rad) {
 		AMREX_ASSERT(RadParticles == nullptr);
 		RadParticles = std::make_unique<quokka::RadParticleContainer<problem_t>>(this);
-		particleRegister_.registerParticleType(quokka::ParticleType::Rad, -1, quokka::RadParticleLumIdx, quokka::RadParticleBirthTimeIdx, false, false,
-						       RadParticles.get());
+		particleRegister_.registerParticleType(RadParticles.get(), quokka::ParticleType::Rad, -1, quokka::RadParticleLumIdx, false,
+						       quokka::RadParticleBirthTimeIdx);
 		RadParticles->Restart(restart_chkfile, particleRegister_.getParticleTypeName(quokka::ParticleType::Rad));
 	}
 
@@ -2938,24 +2957,35 @@ template <typename problem_t> void AMRSimulation<problem_t>::ReadCheckpointFile(
 	if constexpr (Particle_Traits<problem_t>::particle_switch & ParticleSwitch::CIC) {
 		AMREX_ASSERT(CICParticles == nullptr);
 		CICParticles = std::make_unique<quokka::CICParticleContainer>(this);
-		particleRegister_.registerParticleType(quokka::ParticleType::CIC, quokka::CICParticleMassIdx, -1, -1, false, true, CICParticles.get());
+		particleRegister_.registerParticleType(CICParticles.get(), quokka::ParticleType::CIC, quokka::CICParticleMassIdx, -1);
 		CICParticles->Restart(restart_chkfile, particleRegister_.getParticleTypeName(quokka::ParticleType::CIC));
 	}
 
 	if constexpr (Particle_Traits<problem_t>::particle_switch & ParticleSwitch::CICRad) {
 		AMREX_ASSERT(CICRadParticles == nullptr);
 		CICRadParticles = std::make_unique<quokka::CICRadParticleContainer<problem_t>>(this);
-		particleRegister_.registerParticleType(quokka::ParticleType::CICRad, quokka::CICRadParticleMassIdx, quokka::CICRadParticleLumIdx,
-						       quokka::CICRadParticleBirthTimeIdx, false, false, CICRadParticles.get());
+		particleRegister_.registerParticleType(CICRadParticles.get(), quokka::ParticleType::CICRad, quokka::CICRadParticleMassIdx,
+						       quokka::CICRadParticleLumIdx, false, quokka::CICRadParticleBirthTimeIdx);
 		CICRadParticles->Restart(restart_chkfile, particleRegister_.getParticleTypeName(quokka::ParticleType::CICRad));
 	}
 
 	if constexpr (Particle_Traits<problem_t>::particle_switch & ParticleSwitch::StellarPop) {
 		AMREX_ASSERT(StellarPopParticles == nullptr);
+		const bool stellarpop_allows_destruction = false;
 		StellarPopParticles = std::make_unique<quokka::StellarPopParticleContainer<problem_t>>(this);
-		particleRegister_.registerParticleType(quokka::ParticleType::StellarPop, quokka::StellarPopParticleMassIdx, quokka::StellarPopParticleLumIdx,
-						       -1, false, true, StellarPopParticles.get());
+		particleRegister_.registerStarParticleType(StellarPopParticles.get(), quokka::ParticleType::StellarPop, quokka::StellarPopParticleMassIdx,
+						       quokka::StellarPopParticleLumIdx, quokka::StellarPopParticleBirthTimeIdx, true, stellarpop_allows_destruction,
+						       quokka::StellarPopParticleStageIdx, true);
 		StellarPopParticles->Restart(restart_chkfile, particleRegister_.getParticleTypeName(quokka::ParticleType::StellarPop));
+	}
+
+	if constexpr (Particle_Traits<problem_t>::particle_switch & ParticleSwitch::Test) {
+		AMREX_ASSERT(TestParticles == nullptr);
+		TestParticles = std::make_unique<quokka::TestParticleContainer<problem_t>>(this);
+		particleRegister_.registerStarParticleType(TestParticles.get(), quokka::ParticleType::Test, quokka::TestParticleMassIdx,
+							   quokka::TestParticleLumIdx, quokka::TestParticleBirthTimeIdx, true, true,
+							   quokka::TestParticleStageIdx, true);
+		TestParticles->Restart(restart_chkfile, particleRegister_.getParticleTypeName(quokka::ParticleType::Test));
 	}
 #endif // AMREX_SPACEDIM == 3
 #endif

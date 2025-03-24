@@ -15,11 +15,12 @@ template <unsigned int position> constexpr auto bitflag() -> unsigned int { retu
 // To check if CIC particles are enabled:
 //   if (particle_switch & ParticleSwitch::CIC) { ... }
 enum class ParticleSwitch : unsigned int {
-	None = 0U,	      // No particles, = 0b0000
-	CIC = bitflag<1>(),   // Cloud-In-Cell (gravitating) particles, = 0b0001
-	Rad = bitflag<2>(),   // Radiation particles, = 0b0010
+	None = 0U,	       // No particles, = 0b0000
+	CIC = bitflag<1>(),    // Cloud-In-Cell (gravitating) particles, = 0b0001
+	Rad = bitflag<2>(),    // Radiation particles, = 0b0010
 	CICRad = bitflag<3>(), // Combined gravitating-radiating particles, = 0b0100
-	StellarPop = bitflag<4>() // Stellar population particles, = 0b1000
+	StellarPop = bitflag<4>(), // Stellar population particles, = 0b1000
+	Test = bitflag<5>()    // Test particles with all features enabled, = 0b1000
 };
 
 // Enable bitwise operations on the enum class
@@ -67,10 +68,11 @@ namespace quokka
 
 // Enum class to identify different particle types
 enum class ParticleType {
-	Rad,   // Radiation particles
-	CIC,   // Gravitating particles
+	Rad,	// Radiation particles
+	CIC,	// Gravitating particles
 	CICRad, // Gravitating radiation particles
-	StellarPop // Stellar population particles
+	StellarPop, // Stellar population particles
+	Test	// Test particles with all features enabled
 };
 
 // Global particle parameters
@@ -80,6 +82,8 @@ enum class ParticleType {
 // their own copies.
 inline amrex::Real particle_param1 = -1.0; // NOLINT
 inline amrex::Real particle_param2 = -1.0; // NOLINT
+inline amrex::Real particle_param3 = -1.0; // NOLINT
+inline int particle_verbose = 0;	   // NOLINT print particle logistics
 
 //-------------------- Radiation particles --------------------
 
@@ -150,14 +154,16 @@ constexpr int CICRadParticleRealComps = []() constexpr {
 template <typename problem_t> using CICRadParticleContainer = amrex::AmrParticleContainer<CICRadParticleRealComps<problem_t>>;
 template <typename problem_t> using CICRadParticleIterator = amrex::ParIter<CICRadParticleRealComps<problem_t>>;
 
-//-------------------- Stellar Population particles --------------------
+//-------------------- Stellar evolution stage enum --------------------
 
-// Enum for stellar population fate
-enum class StellarPopFate : int {
-	LowMass = 0, // Low mass star fate
-	SN,          // Supernova fate
-	Nothing      // No specific fate
+// Enum for StellarEvolution particle stage
+enum class StellarEvolutionStage {
+	LowMassStar,  // Low mass star stage
+	SNProgenitor, // Supernova progenitor stage
+	SNRemnant     // Supernova remnant stage
 };
+
+//-------------------- Stellar population particles --------------------
 
 // Indices for stellar population particles (StellarPop_particles), mass + 3 velocity components + fate + luminosity
 enum StellarPopParticleDataIdx {
@@ -165,21 +171,19 @@ enum StellarPopParticleDataIdx {
 	StellarPopParticleVxIdx,       // Velocity in x direction
 	StellarPopParticleVyIdx,       // Velocity in y direction
 	StellarPopParticleVzIdx,       // Velocity in z direction
+	StellarPopParticleBirthTimeIdx, // Time when particle becomes active
 	StellarPopParticleLumIdx       // Base index for luminosity components
 };
 
-// Indices for stellar population particles integer components
-enum StellarPopParticleIntDataIdx {
-	StellarPopParticleFateIdx = 0  // Fate of the stellar population (integer component)
-};
+constexpr int StellarPopParticleStageIdx = 0; // Evolution stage of the particle, index in the integer components
 
 // Number of real components for StellarPop_particles, mass + 3 velocity components + luminosity
 template <typename problem_t>
 constexpr int StellarPopParticleRealComps = []() constexpr {
 	if constexpr (Physics_Traits<problem_t>::is_hydro_enabled && Physics_Traits<problem_t>::is_radiation_enabled) {
-		return 4 + Physics_Traits<problem_t>::nGroups; // mass, vx, vy, vz, lum[nGroups]
+		return 5 + Physics_Traits<problem_t>::nGroups; // mass, vx, vy, vz, birth_time, lum[nGroups]
 	} else {
-		return 4; // mass, vx, vy, vz
+		return 5; // mass, vx, vy, vz, birth_time
 	}
 }();
 
@@ -190,7 +194,62 @@ constexpr int StellarPopParticleIntComps = 1; // fate
 template <typename problem_t> using StellarPopParticleContainer = amrex::AmrParticleContainer<StellarPopParticleRealComps<problem_t>, StellarPopParticleIntComps>;
 template <typename problem_t> using StellarPopParticleIterator = amrex::ParIter<StellarPopParticleRealComps<problem_t>, StellarPopParticleIntComps>;
 
+//-------------------- Test particles --------------------
+
+// Indices for test particles (Test_particles)
+enum TestParticleDataIdx {
+	TestParticleMassIdx = 0,  // Mass of the particle
+	TestParticleVxIdx,	  // Velocity in x direction
+	TestParticleVyIdx,	  // Velocity in y direction
+	TestParticleVzIdx,	  // Velocity in z direction
+	TestParticleBirthTimeIdx, // Time when particle becomes active
+	TestParticleLumIdx	  // Base index for luminosity components
+};
+
+constexpr int TestParticleStageIdx = 0; // Evolution stage of the particle, index in the integer components
+
+// Number of real components for StellarPop_particles, mass + 3 velocity components + luminosity
+template <typename problem_t>
+constexpr int TestParticleRealComps = []() constexpr {
+	if constexpr (Physics_Traits<problem_t>::is_hydro_enabled && Physics_Traits<problem_t>::is_radiation_enabled) {
+		return 6 + Physics_Traits<problem_t>::nGroups; // mass, vx, vy, vz, birth_time, stage, lum[nGroups]
+	} else {
+		return 6; // mass, vx, vy, vz, birth_time, stage
+	}
+}();
+
+// Number of integer components for Test_particles
+constexpr int TestParticleIntComps = 1; // stellar evolution stage
+
+// Type definitions for Test_particles container and iterator
+template <typename problem_t> using TestParticleContainer = amrex::AmrParticleContainer<TestParticleRealComps<problem_t>, TestParticleIntComps>;
+template <typename problem_t> using TestParticleIterator = amrex::ParIter<TestParticleRealComps<problem_t>, TestParticleIntComps>;
+
 #endif // AMREX_SPACEDIM == 3
+
+// Units data for each particle type as powers of Mass, Length, Time, Temperature
+inline auto get_units_data() -> const auto &
+{
+	static const auto units_data = std::map<ParticleType, std::vector<std::map<std::string, std::array<int, 4>>>>{
+	    {ParticleType::Rad, {{{"birth_time", {0, 0, 1, 0}}, {"death_time", {0, 0, 1, 0}}, {"luminosity", {-1, 2, -3, 0}}}}},
+	    {ParticleType::CIC, {{{"mass", {1, 0, 0, 0}}, {"vx", {0, 1, -1, 0}}, {"vy", {0, 1, -1, 0}}, {"vz", {0, 1, -1, 0}}}}},
+	    {ParticleType::CICRad,
+	     {{{"mass", {1, 0, 0, 0}},
+	       {"vx", {0, 1, -1, 0}},
+	       {"vy", {0, 1, -1, 0}},
+	       {"vz", {0, 1, -1, 0}},
+	       {"birth_time", {0, 0, 1, 0}},
+	       {"death_time", {0, 0, 1, 0}},
+	       {"luminosity", {-1, 2, -3, 0}}}}},
+	    {ParticleType::Test,
+	     {{{"mass", {1, 0, 0, 0}},
+	       {"vx", {0, 1, -1, 0}},
+	       {"vy", {0, 1, -1, 0}},
+	       {"vz", {0, 1, -1, 0}},
+	       {"birth_time", {0, 0, 1, 0}},
+	       {"luminosity", {-1, 2, -3, 0}}}}}};
+	return units_data;
+}
 
 // Assumptions for any particle type:
 // 1. For massive particles, velocity components start after mass
@@ -208,6 +267,8 @@ inline void particleParmParse()
 	const amrex::ParmParse pp("particles");
 	pp.query("param1", particle_param1);
 	pp.query("param2", particle_param2);
+	pp.query("param3", particle_param3);
+	pp.query("verbose", particle_verbose);
 }
 
 } // namespace quokka
