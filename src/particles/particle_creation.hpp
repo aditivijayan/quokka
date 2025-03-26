@@ -135,9 +135,9 @@ template <ParticleType particleType> struct ParticleCreationTraits {
 	}
 };
 
-// Specialization for StellarPop particles
-template <> struct ParticleCreationTraits<ParticleType::StellarPop> {
-	// Specialized nested ParticleChecker for StellarPop particles
+// Specialization for StochasticStellarPop particles
+template <> struct ParticleCreationTraits<ParticleType::StochasticStellarPop> {
+	// Specialized nested ParticleChecker for StochasticStellarPop particles
 	template <typename problem_t> struct ParticleChecker {
 		amrex::Real current_time;
 		amrex::Real dt;
@@ -160,7 +160,7 @@ template <> struct ParticleCreationTraits<ParticleType::StellarPop> {
 		}
 	};
 
-	// Specialized nested ParticleCreator for StellarPop particles
+	// Specialized nested ParticleCreator for StochasticStellarPop particles
 	template <typename problem_t> struct ParticleCreator {
 		int mass_idx;
 		int birth_time_index;
@@ -232,11 +232,11 @@ template <> struct ParticleCreationTraits<ParticleType::StellarPop> {
 				    int evolution_stage_index = -1, int birth_time_index = -1)
 	{
 		// Use the common implementation with our checker and creator types
-		ParticleCreationImpl::createParticlesImpl<problem_t, ContainerType, ParticleCreationTraits<ParticleType::StellarPop>::template ParticleChecker,
-							  ParticleCreationTraits<ParticleType::StellarPop>::template ParticleCreator>(container, mass_idx, state, lev, current_time, dt,
+		ParticleCreationImpl::createParticlesImpl<problem_t, ContainerType, ParticleCreationTraits<ParticleType::StochasticStellarPop>::template ParticleChecker,
+							  ParticleCreationTraits<ParticleType::StochasticStellarPop>::template ParticleCreator>(container, mass_idx, state, lev, current_time, dt,
 															       evolution_stage_index, birth_time_index);
 	}
-}; // ParticleCreationTraits<ParticleType::StellarPop>
+}; // ParticleCreationTraits<ParticleType::StochasticStellarPop>
 
 } // namespace quokka
 
