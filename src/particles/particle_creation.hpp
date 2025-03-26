@@ -1,6 +1,7 @@
 #ifndef PARTICLE_CREATION_HPP_
 #define PARTICLE_CREATION_HPP_
 
+#include "hydro/hydro_system.hpp"
 #include "particle_types.hpp"
 
 namespace quokka
