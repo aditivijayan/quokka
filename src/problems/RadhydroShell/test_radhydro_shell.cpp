@@ -98,7 +98,7 @@ void RadSystem<ShellProblem>::SetRadEnergySource(array_t &radEnergy, const amrex
 		z0 = 0.;
 	}
 
-	const amrex::Real source_norm = (1.0 / c) * L_star / std::pow(2.0 * M_PI * sigma_star * sigma_star, 1.5);
+	const amrex::Real source_norm = L_star / std::pow(2.0 * M_PI * sigma_star * sigma_star, 1.5);
 
 	amrex::ParallelFor(indexRange, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept {
 		amrex::Real const x = prob_lo[0] + (i + amrex::Real(0.5)) * dx[0];
@@ -224,7 +224,7 @@ template <> void QuokkaSimulation<ShellProblem>::setInitialConditionsOnGrid(quok
 
 		AMREX_ASSERT(!std::isnan(rho));
 		AMREX_ASSERT(!std::isnan(Erad));
-		AMREX_ASSERT(!std::isnan(Frad));
+		AMREX_ASSERT(!std::isnan(Frad_r));
 
 		state_cc(i, j, k, HydroSystem<ShellProblem>::density_index) = rho;
 		state_cc(i, j, k, HydroSystem<ShellProblem>::x1Momentum_index) = 0;

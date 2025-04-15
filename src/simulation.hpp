@@ -10,6 +10,7 @@
 /// timestepping, solving, and I/O of a simulation.
 
 // c++ headers
+#include <cfenv>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -45,32 +46,32 @@ namespace filesystem = experimental::filesystem;
 #include "AMReX_FArrayBox.H"
 #include "AMReX_FillPatchUtil.H"
 #include "AMReX_FillPatcher.H"
+#include "AMReX_Geometry.H"
 #include "AMReX_GpuQualifiers.H"
 #include "AMReX_INT.H"
 #include "AMReX_IndexType.H"
 #include "AMReX_IntVect.H"
 #include "AMReX_Interpolater.H"
+#include "AMReX_MultiFab.H"
 #include "AMReX_MultiFabUtil.H"
 #include "AMReX_Orientation.H"
 #include "AMReX_ParallelDescriptor.H"
+#include "AMReX_ParmParse.H"
+#include "AMReX_PlotFileUtil.H"
+#include "AMReX_Print.H"
 #include "AMReX_REAL.H"
 #include "AMReX_SPACE.H"
+#include "AMReX_Utility.H"
 #include "AMReX_Vector.H"
 #include "AMReX_VisMF.H"
 #include "AMReX_YAFluxRegister.H"
-#include <AMReX_Geometry.H>
-#include <AMReX_MultiFab.H>
-#include <AMReX_ParmParse.H>
-#include <AMReX_PlotFileUtil.H>
-#include <AMReX_Print.H>
-#include <AMReX_Utility.H>
 #include <fmt/core.h>
 #include <yaml-cpp/yaml.h>
 
 #ifdef AMREX_PARTICLES
-#include "particles/CICParticles.hpp"
-#include <AMReX_AmrParticles.H>
-#include <AMReX_Particles.H>
+#include "AMReX_AmrParticles.H"
+#include "AMReX_Particles.H"
+#include "particles/PhysicsParticles.hpp"
 #endif
 
 #if AMREX_SPACEDIM == 3
@@ -99,6 +100,9 @@ namespace filesystem = experimental::filesystem;
 using namespace conduit;
 using namespace ascent;
 #endif
+
+// Quokka version string to be stored in metadata. This is used in post-processing tools like YT to do version checks.
+static constexpr auto QUOKKA_VERSION = "25.03";
 
 enum class ParticleStep { BeforePoissonSolve, AfterPoissonSolve };
 
@@ -154,28 +158,29 @@ template <typename problem_t> class AMRSimulation : public amrex::AmrCore
 	amrex::Vector<int> reductionFactor_;  // timestep reduction factor for each level
 	amrex::Real stopTime_ = 1.0;	      // default
 	amrex::Real cflNumber_ = 0.3;	      // default
+	amrex::Real particleCflNumber_ = 0.5; // default
 	amrex::Real dtToleranceFactor_ = 1.1; // default
 	amrex::Long cycleCount_ = 0;
-	int printCycleTiming_ = 0;		    // default: don't print
-	amrex::Long maxTimesteps_ = 1e4;	    // default
-	amrex::Long maxWalltime_ = 0;		    // default: no limit
-	int ascentInterval_ = -1;		    // -1 == no in-situ renders with Ascent
-	int plotfileInterval_ = -1;		    // -1 == no output
-	int projectionInterval_ = -1;		    // -1 == no output
-	int statisticsInterval_ = -1;		    // -1 == no output
-	amrex::Real plotTimeInterval_ = -1.0;	    // time interval for plt file
-	amrex::Real checkpointTimeInterval_ = -1.0; // time interval for checkpoints
-	int checkpointInterval_ = -1;		    // -1 == no output
-	int amrInterpMethod_ = 1;		    // 0 == piecewise constant, 1 == lincc_interp
-	amrex::Real reltolPoisson_ = 1.0e-5;	    // default
-	amrex::Real abstolPoisson_ = 1.0e-5;	    // default (scaled by minimum RHS value)
-	int doPoissonSolve_ = 0;		    // 1 == self-gravity enabled, 0 == disabled
+	int printCycleTiming_ = 0;				     // default: don't print
+	amrex::Long maxTimesteps_ = std::numeric_limits<int>::max(); // default: no limit
+	amrex::Long maxWalltime_ = 0;				     // default: no limit
+	int ascentInterval_ = -1;				     // -1 == no in-situ renders with Ascent
+	int plotfileInterval_ = -1;				     // -1 == no output
+	int projectionInterval_ = -1;				     // -1 == no output
+	int statisticsInterval_ = -1;				     // -1 == no output
+	amrex::Real plotTimeInterval_ = -1.0;			     // time interval for plt file
+	amrex::Real checkpointTimeInterval_ = -1.0;		     // time interval for checkpoints
+	int checkpointInterval_ = -1;				     // -1 == no output
+	int amrInterpMethod_ = 1;				     // 0 == piecewise constant, 1 == lincc_interp
+	amrex::Real reltolPoisson_ = 1.0e-5;			     // default
+	amrex::Real abstolPoisson_ = 1.0e-5;			     // default (scaled by minimum RHS value)
+	int doPoissonSolve_ = 0;				     // 1 == self-gravity enabled, 0 == disabled
 	amrex::Vector<amrex::MultiFab> phi;
 
 	amrex::Real densityFloor_ = 0.0; // default
 	amrex::Real tempFloor_ = 0.0;	 // default
 
-	std::unordered_map<std::string, variant_t> simulationMetadata_;
+	YAML::Node simulationMetadata_;
 
 	// constructor
 	explicit AMRSimulation(amrex::Vector<amrex::BCRec> &BCs_cc, amrex::Vector<amrex::BCRec> &BCs_fc) : BCs_cc_(BCs_cc), BCs_fc_(BCs_fc) { initialize(); }
@@ -226,7 +231,14 @@ template <typename problem_t> class AMRSimulation : public amrex::AmrCore
 	virtual void preCalculateInitialConditions() = 0;
 	virtual void setInitialConditionsOnGrid(quokka::grid const &grid_elem) = 0;
 	virtual void setInitialConditionsOnGridFaceVars(quokka::grid const &grid_elem) = 0;
-	virtual void createInitialParticles() = 0;
+	virtual void createInitialRadParticles() = 0;
+#if AMREX_SPACEDIM == 3
+	virtual void createInitialCICParticles() = 0;
+	virtual void createInitialCICRadParticles() = 0;
+	virtual void createInitialStochasticStellarPopParticles() = 0;
+	// Test particles have integer components, and InitFromAsciiFile does not support integer components, so we do not allow creating them at the start
+	// of the simulation
+#endif // AMREX_SPACEDIM == 3
 	virtual void computeBeforeTimestep() = 0;
 	virtual void computeAfterTimestep() = 0;
 	virtual void computeAfterEvolve(amrex::Vector<amrex::Real> &initSumCons) = 0;
@@ -327,6 +339,8 @@ template <typename problem_t> class AMRSimulation : public amrex::AmrCore
 	void WriteCheckpointFile() const;
 	void SetLastCheckpointSymlink(std::string const &checkpointname) const;
 	void ReadCheckpointFile();
+	auto getGitHashForQuokka() const -> std::string;
+	auto getGitHashForAmrex() const -> std::string;
 	auto getWalltime() -> amrex::Real;
 	auto getCycleWalltime() -> amrex::Real;
 	void setChkFile(std::string const &chkfile_number);
@@ -334,8 +348,9 @@ template <typename problem_t> class AMRSimulation : public amrex::AmrCore
 	[[nodiscard]] auto getNewMF_fc() const -> amrex::Vector<amrex::Array<amrex::MultiFab, AMREX_SPACEDIM>> const &;
 
 	// particle functions
+#if AMREX_SPACEDIM == 3
 	void kickParticlesAllLevels(amrex::Real dt);
-	void driftParticlesAllLevels(amrex::Real dt);
+#endif // AMREX_SPACEDIM == 3
 
 	// simulation metadata
 	void initializeSimulationMetadata();
@@ -447,19 +462,42 @@ template <typename problem_t> class AMRSimulation : public amrex::AmrCore
 
 	// tracer particles
 #ifdef AMREX_PARTICLES
-	void InitParticles();	 // create tracer particles
-	void InitCICParticles(); // create CIC particles
+      public:
 	int do_tracers = 0;
-	int do_cic_particles = 0;
+
+      protected:
+	void InitParticles();	 // create tracer particles
+	void InitPhyParticles(); // create PhysicsParticles
 	std::unique_ptr<amrex::AmrTracerParticleContainer> TracerPC;
+	std::unique_ptr<quokka::RadParticleContainer<problem_t>> RadParticles;
+#if AMREX_SPACEDIM == 3
 	std::unique_ptr<quokka::CICParticleContainer> CICParticles;
+	std::unique_ptr<quokka::CICRadParticleContainer<problem_t>> CICRadParticles;
+	std::unique_ptr<quokka::StochasticStellarPopParticleContainer<problem_t>> StochasticStellarPopParticles;
+	std::unique_ptr<quokka::TestParticleContainer<problem_t>> TestParticles;
+#endif // AMREX_SPACEDIM == 3
 #endif
 
 	// external objects
 #ifdef AMREX_USE_ASCENT
 	Ascent ascent_;
 #endif
+
+	// Add PhysicsParticleRegister member
+	quokka::PhysicsParticleRegister<problem_t> particleRegister_;
 };
+
+template <typename problem_t> auto AMRSimulation<problem_t>::getGitHashForQuokka() const -> std::string
+{
+	// NOTE: this is defined by a preprocessor macro in CMakeLists.txt
+	return QUOKKA_GIT_HASH;
+}
+
+template <typename problem_t> auto AMRSimulation<problem_t>::getGitHashForAmrex() const -> std::string
+{
+	// NOTE: this is defined by a preprocessor macro in CMakeLists.txt
+	return AMREX_GIT_HASH;
+}
 
 template <typename problem_t> void AMRSimulation<problem_t>::setChkFile(std::string const &chkfile_number) { restart_chkfile = chkfile_number; }
 
@@ -529,6 +567,14 @@ template <typename problem_t> void AMRSimulation<problem_t>::initialize()
 		}
 	}
 
+	// add Quokka version to metadata
+	simulationMetadata_["quokka_version"] = QUOKKA_VERSION;
+
+	// add git commit to metadata
+	simulationMetadata_["git_hash_quokka"] = getGitHashForQuokka();
+	simulationMetadata_["git_hash_amrex"] = getGitHashForAmrex();
+
+	// add units and physics-specific metadata
 	if constexpr (Physics_Traits<problem_t>::is_hydro_enabled || Physics_Traits<problem_t>::is_radiation_enabled) {
 		initializeSimulationMetadata();
 	}
@@ -601,11 +647,14 @@ template <typename problem_t> void AMRSimulation<problem_t>::readParameters()
 	// ParmParse reads inputs from the *.inputs file
 	amrex::ParmParse pp;
 
-	// Default nsteps = 1e4
+	// Default nsteps == INT_MAX
 	pp.query("max_timesteps", maxTimesteps_);
 
 	// Default CFL number == 0.3, set to whatever is in the file
 	pp.query("cfl", cflNumber_);
+
+	// Default CFL number for particles == 0.5, set to whatever is in the file
+	pp.query("particle_cfl", particleCflNumber_);
 
 	// Default AMR interpolation method == lincc_interp
 	pp.query("amr_interpolation_method", amrInterpMethod_);
@@ -648,9 +697,6 @@ template <typename problem_t> void AMRSimulation<problem_t>::readParameters()
 
 	// Default do_tracers = 0 (turns on/off tracer particles)
 	pp.query("do_tracers", do_tracers);
-
-	// Default do_cic_particles = 0 (turns on/off CIC particles)
-	pp.query("do_cic_particles", do_cic_particles);
 
 	// Default suppress_output = 0
 	pp.query("suppress_output", suppress_output);
@@ -702,9 +748,8 @@ template <typename problem_t> void AMRSimulation<problem_t>::setInitialCondition
 		if (do_tracers != 0) {
 			InitParticles();
 		}
-		if (do_cic_particles != 0) {
-			InitCICParticles();
-		}
+
+		InitPhyParticles();
 #endif
 
 		if (checkpointInterval_ > 0) {
@@ -761,15 +806,32 @@ template <typename problem_t> auto AMRSimulation<problem_t>::computeTimestepAtLe
 	// compute hydro timestep on level 'lev'
 	computeMaxSignalLocal(lev);
 	const amrex::Real domain_signal_max = max_signal_speed_[lev].norminf();
+
 	amrex::GpuArray<amrex::Real, AMREX_SPACEDIM> const &dx = geom[lev].CellSizeArray();
 	const amrex::Real dx_min = std::min({AMREX_D_DECL(dx[0], dx[1], dx[2])});
+
+	// compute hydro timestep first
 	const amrex::Real hydro_dt = cflNumber_ * (dx_min / domain_signal_max);
+
+	// compute maximum particle speed on level 'lev'
+	amrex::Real particle_dt = std::numeric_limits<amrex::Real>::max();
+#if AMREX_SPACEDIM == 3
+	if (particleRegister_.HasMassiveParticles()) {
+		const amrex::Real max_particle_speed = particleRegister_.computeMaxParticleSpeed(lev);
+		AMREX_ALWAYS_ASSERT(!std::isnan(max_particle_speed));
+		AMREX_ALWAYS_ASSERT(std::isfinite(max_particle_speed));
+		// avoid division by zero by only computing dt if max_particle_speed is not too small
+		if (max_particle_speed > 1e-5 * (dx_min / hydro_dt)) {
+			particle_dt = particleCflNumber_ * (dx_min / max_particle_speed);
+		}
+	}
+#endif
 
 	// compute timestep due to extra physics on level 'lev'
 	const amrex::Real extra_physics_dt = computeExtraPhysicsTimestep(lev);
 	
 	// return minimum timestep
-	return std::min(hydro_dt, extra_physics_dt);
+	return std::min({hydro_dt, particle_dt, extra_physics_dt});
 }
 
 template <typename problem_t> void AMRSimulation<problem_t>::computeTimestep()
@@ -940,8 +1002,10 @@ template <typename problem_t> void AMRSimulation<problem_t>::evolve()
 		// do user-specified calculations before the level update
 		computeBeforeTimestep();
 
+#if AMREX_SPACEDIM == 3
 		// do particle leapfrog (first kick at time t)
 		kickParticlesAllLevels(dt_[0]);
+#endif
 
 		// hyperbolic advance over all levels
 		// (N.B. when AMR is enabled, regridding may happen during this function!)
@@ -949,15 +1013,31 @@ template <typename problem_t> void AMRSimulation<problem_t>::evolve()
 		const int iteration = 1; // this is the first call to advance level 'lev'
 		timeStepWithSubcycling(lev, cur_time, iteration);
 
+#if AMREX_SPACEDIM == 3
 		// drift particles from t to (t + dt)
 		// N.B.: MUST be done *before* Poisson solve at new time!
-		driftParticlesAllLevels(dt_[0]);
+		particleRegister_.driftParticlesAllLevels(dt_[0], finest_level);
+#endif
 
 		// elliptic solve over entire AMR grid (post-timestep)
 		ellipticSolveAllLevels(dt_[0]);
 
 		// do particle leapfrog (second kick at t + dt)
+#if AMREX_SPACEDIM == 3
 		kickParticlesAllLevels(dt_[0]);
+
+		// Use the new type-aware particle creation method
+		// TODO(cch): Need to take care of AMR subscycling
+		particleRegister_.createParticlesFromState(state_new_cc_[0], 0, cur_time, dt_[0]);
+
+		// Stellar evolution and SN deposition
+		// TODO(cch): Need to take care of AMR subcycling
+		particleRegister_.depositSN(state_new_cc_[0], 0, cur_time + dt_[0]);
+
+		// Use the new type-aware particle destruction method
+		// TODO(cch): Need to take care of AMR subcycling
+		particleRegister_.destroyParticles(0, cur_time, dt_[0]);
+#endif
 
 		cur_time += dt_[0];
 		++cycleCount_;
@@ -989,6 +1069,11 @@ template <typename problem_t> void AMRSimulation<problem_t>::evolve()
 		if (projectionInterval_ > 0 && (step + 1) % projectionInterval_ == 0) {
 			last_projection_step = step + 1;
 			WriteProjectionPlotfile();
+		}
+
+		// print particle statistics
+		if (quokka::particle_verbose > 0) {
+			particleRegister_.printParticleStatistics();
 		}
 
 		// write diagnostics
@@ -1094,7 +1179,7 @@ template <typename problem_t> void AMRSimulation<problem_t>::evolve()
 template <typename problem_t> void AMRSimulation<problem_t>::calculateGpotAllLevels()
 {
 #if AMREX_SPACEDIM == 3
-	if (doPoissonSolve_) {
+	if (doPoissonSolve_ != 0) {
 		if (do_subcycle == 1) { // not supported
 			amrex::Abort("Poisson solve is not support when AMR subcycling is enabled! You must set do_subcycle = 0.");
 		}
@@ -1122,20 +1207,33 @@ template <typename problem_t> void AMRSimulation<problem_t>::calculateGpotAllLev
 			rhs[lev].setVal(0);
 		}
 
-#ifdef AMREX_PARTICLES
-		if (do_cic_particles != 0) {
-			// deposit particles using amrex::ParticleToMesh
-			amrex::ParticleToMesh(*CICParticles, amrex::GetVecOfPtrs(rhs), 0, finest_level,
-					      quokka::CICDeposition{Gconst_, quokka::ParticleMassIdx, 0, 1});
-		}
-#endif
-
 		for (int lev = 0; lev <= finest_level; ++lev) {
 			AMREX_ALWAYS_ASSERT(!rhs[lev].contains_nan());
 			fillPoissonRhsAtLevel(rhs[lev], lev);
 			AMREX_ALWAYS_ASSERT(!rhs[lev].contains_nan());
 			rhs_min = std::min(rhs_min, rhs[lev].min(0));
 		}
+
+#ifdef AMREX_PARTICLES
+		// deposit particle mass from all particles that have mass into rhs by accumulation
+		particleRegister_.depositMass(amrex::GetVecOfPtrs(rhs), finest_level, Gconst_);
+#endif
+
+		// // For debugging: print rhs at nz = 16 and lev = 0
+		// amrex::Print() << "rhs[0].data() =";
+		// for (amrex::MFIter iter(rhs[0]); iter.isValid(); ++iter) {
+		// 	const amrex::Box &indexRange = iter.validbox();
+		// 	auto const &rhs_arr = rhs[0].array(iter);
+		// 	amrex::ParallelFor(indexRange, [=] AMREX_GPU_DEVICE(int i, int j, int k) {
+		// 		if (k == 8) {
+		// 			if (i == 0) {
+		// 				std::cout << "\n";
+		// 			}
+		// 			std::cout << rhs_arr(i, j, k) << ", ";
+		// 		}
+		// 	});
+		// 	std::cout << "\n";
+		// }
 
 		amrex::Real abstol = abstolPoisson_ * rhs_min;
 		poissonSolver.solve(amrex::GetVecOfPtrs(phi), amrex::GetVecOfConstPtrs(rhs), reltolPoisson_, abstol);
@@ -1154,7 +1252,7 @@ template <typename problem_t> void AMRSimulation<problem_t>::calculateGpotAllLev
 template <typename problem_t> void AMRSimulation<problem_t>::gravAccelAllLevels(const amrex::Real dt)
 {
 #if AMREX_SPACEDIM == 3
-	if (doPoissonSolve_) {
+	if (doPoissonSolve_ != 0) {
 
 		BL_PROFILE_REGION("GravitySolver");
 
@@ -1169,7 +1267,7 @@ template <typename problem_t> void AMRSimulation<problem_t>::gravAccelAllLevels(
 template <typename problem_t> void AMRSimulation<problem_t>::ellipticSolveAllLevels(const amrex::Real dt)
 {
 #if AMREX_SPACEDIM == 3
-	if (doPoissonSolve_) {
+	if (doPoissonSolve_ != 0) {
 
 		calculateGpotAllLevels();
 
@@ -1187,116 +1285,77 @@ struct setFunctorParticleAccel {
 	}
 };
 
+#if AMREX_SPACEDIM == 3
 template <typename problem_t> void AMRSimulation<problem_t>::kickParticlesAllLevels(const amrex::Real dt)
 {
 	// kick particles (do: vel[i] += 0.5 * dt * accel[i])
 
-	if (do_cic_particles != 0) {
-		// gravitational acceleration multifabs
-		amrex::Vector<amrex::MultiFab> accel(finest_level + 1);
+	// skip if there are no massive particles
+	if (!particleRegister_.HasMassiveParticles()) {
+		return;
+	}
 
-		// self-gravity in Quokka requires open boundary conditions,
-		// so we extrapolate the gravitational accelerations at physical boundaries
-		amrex::Vector<amrex::BCRec> accelBC(AMREX_SPACEDIM);
-		for (int j = 0; j < AMREX_SPACEDIM; ++j) {
-			for (int i = 0; i < AMREX_SPACEDIM; ++i) {
-				accelBC[j].setLo(i, amrex::BCType::foextrap);
-				accelBC[j].setHi(i, amrex::BCType::foextrap);
-			}
-		}
+	// Create acceleration MultiFabs for each level
+	amrex::Vector<amrex::MultiFab> accel(finest_level + 1);
 
-		for (int lev = 0; lev <= finest_level; ++lev) {
-			// compute accelerations
-			accel[lev].define(boxArray(lev), DistributionMap(lev), AMREX_SPACEDIM, 1);
-			accel[lev].setVal(0.);
-			auto accel_arr = accel[lev].arrays();
-			const auto &phi_arr = phi[lev].const_arrays();
-			const auto dx_inv = geom[lev].InvCellSizeArray();
-			const amrex::IntVect ng(0);
-
-			// check for NaN
-			AMREX_ALWAYS_ASSERT(!phi[lev].contains_nan());
-
-			amrex::ParallelFor(accel[lev], ng, AMREX_SPACEDIM, [=] AMREX_GPU_DEVICE(int bx, int i, int j, int k, int n) {
-				// compute cell-centered acceleration -grad(phi)
-				if (n == 0) {
-					accel_arr[bx](i, j, k, n) = -0.5 * dx_inv[0] * (phi_arr[bx](i + 1, j, k) - phi_arr[bx](i - 1, j, k));
-				}
-				if (n == 1) {
-					accel_arr[bx](i, j, k, n) = -0.5 * dx_inv[1] * (phi_arr[bx](i, j + 1, k) - phi_arr[bx](i, j - 1, k));
-				}
-				if (n == 2) {
-					accel_arr[bx](i, j, k, n) = -0.5 * dx_inv[2] * (phi_arr[bx](i, j, k + 1) - phi_arr[bx](i, j, k - 1));
-				}
-			});
-			amrex::Gpu::streamSynchronizeAll();
-
-			// fill ghost cells for accel[lev]
-			amrex::GpuBndryFuncFab<setFunctorParticleAccel> boundaryFunctor(setFunctorParticleAccel{});
-			amrex::PhysBCFunct<amrex::GpuBndryFuncFab<setFunctorParticleAccel>> fineBdryFunct(geom[lev], accelBC, boundaryFunctor);
-
-			if (lev == 0) {
-				accel[lev].FillBoundary(geom[lev].periodicity());
-				fineBdryFunct(accel[lev], 0, accel[lev].nComp(), accel[lev].nGrowVect(), 0., 0);
-			} else {
-				amrex::PhysBCFunct<amrex::GpuBndryFuncFab<setFunctorParticleAccel>> coarseBdryFunct(geom[lev - 1], accelBC, boundaryFunctor);
-				amrex::InterpFromCoarseLevel(accel[lev], 0., accel[lev - 1], 0, 0, AMREX_SPACEDIM, geom[lev - 1], geom[lev], coarseBdryFunct, 0,
-							     fineBdryFunct, 0, refRatio(lev - 1), getAmrInterpolaterCellCentered(), accelBC, 0);
-			}
-
-			// check for NaN
-			AMREX_ALWAYS_ASSERT(!accel[lev].contains_nan(0, AMREX_SPACEDIM));
-			AMREX_ALWAYS_ASSERT(!accel[lev].contains_nan());
-
-			// loop over boxes of particles on this level
-			for (quokka::CICParticleIterator pIter(*CICParticles, lev); pIter.isValid(); ++pIter) {
-				auto &particles = pIter.GetArrayOfStructs();
-				quokka::CICParticleContainer::ParticleType *pData = particles().data();
-				const amrex::Long np = pIter.numParticles();
-
-				amrex::Array4<const amrex::Real> const &accel_arr = accel[lev].array(pIter);
-				const auto plo = geom[lev].ProbLoArray();
-
-				amrex::ParallelFor(np, [=] AMREX_GPU_DEVICE(int64_t idx) {
-					quokka::CICParticleContainer::ParticleType &p = pData[idx]; // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)
-					amrex::ParticleInterpolator::Linear interp(p, plo, dx_inv);
-					interp.MeshToParticle(
-					    p, accel_arr, 0, quokka::ParticleVxIdx, AMREX_SPACEDIM,
-					    [=] AMREX_GPU_DEVICE(amrex::Array4<const amrex::Real> const &acc, int i, int j, int k, int comp) {
-						    return acc(i, j, k, comp); // no weighting
-					    },
-					    [=] AMREX_GPU_DEVICE(quokka::CICParticleContainer::ParticleType & p, int comp, amrex::Real acc_comp) {
-						    // kick particle by updating its velocity
-						    p.rdata(comp) += 0.5 * dt * static_cast<amrex::ParticleReal>(acc_comp);
-					    });
-				});
-			}
+	// self-gravity in Quokka requires open boundary conditions,
+	// so we extrapolate the gravitational accelerations at physical boundaries
+	amrex::Vector<amrex::BCRec> accelBC(AMREX_SPACEDIM);
+	for (int j = 0; j < AMREX_SPACEDIM; ++j) {
+		for (int i = 0; i < AMREX_SPACEDIM; ++i) {
+			accelBC[j].setLo(i, amrex::BCType::foextrap);
+			accelBC[j].setHi(i, amrex::BCType::foextrap);
 		}
 	}
-}
 
-template <typename problem_t> void AMRSimulation<problem_t>::driftParticlesAllLevels(const amrex::Real dt)
-{
-	// drift all particles (do: pos[i] += dt * vel[i])
+	for (int lev = 0; lev <= finest_level; ++lev) {
+		// compute accelerations
+		accel[lev].define(boxArray(lev), DistributionMap(lev), AMREX_SPACEDIM, 1);
+		accel[lev].setVal(0.);
+		auto accel_arr = accel[lev].arrays();
+		const auto &phi_arr = phi[lev].const_arrays();
+		const auto dx_inv = geom[lev].InvCellSizeArray();
+		const amrex::IntVect ng(0);
 
-	if (do_cic_particles != 0) {
-		for (int lev = 0; lev <= finest_level; ++lev) {
-			for (quokka::CICParticleIterator pIter(*CICParticles, lev); pIter.isValid(); ++pIter) {
-				auto &particles = pIter.GetArrayOfStructs();
-				quokka::CICParticleContainer::ParticleType *pData = particles().data();
-				const amrex::Long np = pIter.numParticles();
+		// check for NaN
+		AMREX_ALWAYS_ASSERT(!phi[lev].contains_nan());
 
-				amrex::ParallelFor(np, [=] AMREX_GPU_DEVICE(int64_t idx) {
-					quokka::CICParticleContainer::ParticleType &p = pData[idx]; // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)
-					// update particle position
-					for (int i = 0; i < AMREX_SPACEDIM; ++i) {
-						p.pos(i) += dt * p.rdata(quokka::ParticleVxIdx + i);
-					}
-				});
+		amrex::ParallelFor(accel[lev], ng, AMREX_SPACEDIM, [=] AMREX_GPU_DEVICE(int bx, int i, int j, int k, int n) {
+			// compute cell-centered acceleration -grad(phi)
+			if (n == 0) {
+				accel_arr[bx](i, j, k, n) = -0.5 * dx_inv[0] * (phi_arr[bx](i + 1, j, k) - phi_arr[bx](i - 1, j, k));
 			}
+			if (n == 1) {
+				accel_arr[bx](i, j, k, n) = -0.5 * dx_inv[1] * (phi_arr[bx](i, j + 1, k) - phi_arr[bx](i, j - 1, k));
+			}
+			if (n == 2) {
+				accel_arr[bx](i, j, k, n) = -0.5 * dx_inv[2] * (phi_arr[bx](i, j, k + 1) - phi_arr[bx](i, j, k - 1));
+			}
+		});
+		amrex::Gpu::streamSynchronizeAll();
+
+		// fill ghost cells for accel[lev]
+		amrex::GpuBndryFuncFab<setFunctorParticleAccel> boundaryFunctor(setFunctorParticleAccel{});
+		amrex::PhysBCFunct<amrex::GpuBndryFuncFab<setFunctorParticleAccel>> fineBdryFunct(geom[lev], accelBC, boundaryFunctor);
+
+		if (lev == 0) {
+			accel[lev].FillBoundary(geom[lev].periodicity());
+			fineBdryFunct(accel[lev], 0, accel[lev].nComp(), accel[lev].nGrowVect(), 0., 0);
+		} else {
+			amrex::PhysBCFunct<amrex::GpuBndryFuncFab<setFunctorParticleAccel>> coarseBdryFunct(geom[lev - 1], accelBC, boundaryFunctor);
+			amrex::InterpFromCoarseLevel(accel[lev], 0., accel[lev - 1], 0, 0, AMREX_SPACEDIM, geom[lev - 1], geom[lev], coarseBdryFunct, 0,
+						     fineBdryFunct, 0, refRatio(lev - 1), getAmrInterpolaterCellCentered(), accelBC, 0);
 		}
+
+		// check for NaN
+		AMREX_ALWAYS_ASSERT(!accel[lev].contains_nan(0, AMREX_SPACEDIM));
+		AMREX_ALWAYS_ASSERT(!accel[lev].contains_nan());
+
+		// Kick particles using the acceleration field
+		particleRegister_.kickParticlesAtLevel(dt, accel[lev], lev);
 	}
 }
+#endif // AMREX_SPACEDIM == 3
 
 // N.B.: This function actually works for subcycled or not subcycled, as long as
 // nsubsteps[lev] is set correctly.
@@ -1339,9 +1398,9 @@ template <typename problem_t> void AMRSimulation<problem_t>::timeStepWithSubcycl
 				if (do_tracers != 0) {
 					TracerPC->Redistribute(lev);
 				}
-				if (do_cic_particles != 0) {
-					CICParticles->Redistribute(lev);
-				}
+
+				// redistribute all particles in particleRegister_
+				particleRegister_.redistribute(lev);
 #endif
 
 				// do fix-up on all levels that have been re-gridded
@@ -1410,17 +1469,17 @@ template <typename problem_t> void AMRSimulation<problem_t>::timeStepWithSubcycl
 			TracerPC->Redistribute(lev, TracerPC->finestLevel(), redistribute_ngrow);
 		}
 	}
-	// redistribute CIC particles
-	if (do_cic_particles != 0) {
-		int redistribute_ngrow = 0;
-		if ((iteration < nsubsteps[lev]) || (lev == 0)) {
-			if (lev == 0) {
-				redistribute_ngrow = 0;
-			} else {
-				redistribute_ngrow = iteration;
-			}
-			CICParticles->Redistribute(lev, CICParticles->finestLevel(), redistribute_ngrow);
+
+	// redistribute all particles in particleRegister_
+	int redistribute_ngrow = 0;
+	if ((iteration < nsubsteps[lev]) || (lev == 0)) {
+		if (lev == 0) {
+			redistribute_ngrow = 0;
+		} else {
+			redistribute_ngrow = iteration;
 		}
+		// redistribute all particles in particleRegister_
+		particleRegister_.redistribute(lev, redistribute_ngrow);
 	}
 #endif
 }
@@ -2087,16 +2146,93 @@ template <typename problem_t> void AMRSimulation<problem_t>::InitParticles()
 	}
 }
 
-template <typename problem_t> void AMRSimulation<problem_t>::InitCICParticles()
+template <typename problem_t> void AMRSimulation<problem_t>::InitPhyParticles()
 {
-	if (do_cic_particles != 0) {
-		AMREX_ASSERT(CICParticles == nullptr);
-		CICParticles = std::make_unique<quokka::CICParticleContainer>(this);
+	// Verify that particle_switch is of the correct type
+	detail::verify_particle_switch_type<problem_t>();
 
-		CICParticles->SetVerbose(0);
-		createInitialParticles();
-		CICParticles->Redistribute();
+	// Read particle parameters from input file
+	quokka::particleParmParse();
+
+	if constexpr (Particle_Traits<problem_t>::particle_switch & ParticleSwitch::Rad) {
+		AMREX_ASSERT(RadParticles == nullptr);
+
+		// Create particle container
+		RadParticles = std::make_unique<quokka::RadParticleContainer<problem_t>>(this);
+		RadParticles->SetVerbose(0);
+
+		// Register with particle register - Rad particles do not allow creation
+		particleRegister_.registerParticleType(RadParticles.get(), quokka::ParticleType::Rad, -1, quokka::RadParticleLumIdx, false,
+						       quokka::RadParticleBirthTimeIdx);
+
+		// Initialize particles through derived class
+		createInitialRadParticles();
 	}
+
+#if AMREX_SPACEDIM == 3
+	if constexpr (Particle_Traits<problem_t>::particle_switch & ParticleSwitch::CIC) {
+		AMREX_ASSERT(CICParticles == nullptr);
+
+		// Create particle container
+		CICParticles = std::make_unique<quokka::CICParticleContainer>(this);
+		CICParticles->SetVerbose(0);
+
+		// Register with particle register - CIC particles allow creation
+		particleRegister_.registerParticleType(CICParticles.get(), quokka::ParticleType::CIC, quokka::CICParticleMassIdx, -1);
+
+		// Initialize particles through derived class
+		createInitialCICParticles();
+	}
+
+	if constexpr (Particle_Traits<problem_t>::particle_switch & ParticleSwitch::CICRad) {
+		AMREX_ASSERT(CICRadParticles == nullptr);
+
+		// Create particle container
+		CICRadParticles = std::make_unique<quokka::CICRadParticleContainer<problem_t>>(this);
+		CICRadParticles->SetVerbose(0);
+
+		// Register with particle register - CICRad particles do not allow creation
+		particleRegister_.registerParticleType(CICRadParticles.get(), quokka::ParticleType::CICRad, quokka::CICRadParticleMassIdx,
+						       quokka::CICRadParticleLumIdx, false, quokka::CICRadParticleBirthTimeIdx);
+
+		// Initialize particles through derived class
+		createInitialCICRadParticles();
+	}
+
+	if constexpr (Particle_Traits<problem_t>::particle_switch & ParticleSwitch::StochasticStellarPop) {
+		AMREX_ASSERT(StochasticStellarPopParticles == nullptr);
+
+		// Create particle container
+		StochasticStellarPopParticles = std::make_unique<quokka::StochasticStellarPopParticleContainer<problem_t>>(this);
+		StochasticStellarPopParticles->SetVerbose(0);
+
+		// Register with particle register - StochasticStellarPop particles allow creation
+		const bool StochasticStellarPop_allows_destruction = false;
+		particleRegister_.registerStarParticleType(StochasticStellarPopParticles.get(), quokka::ParticleType::StochasticStellarPop,
+							   quokka::StochasticStellarPopParticleMassIdx, quokka::StochasticStellarPopParticleLumIdx,
+							   quokka::StochasticStellarPopParticleBirthTimeIdx, true, StochasticStellarPop_allows_destruction,
+							   quokka::StochasticStellarPopParticleStageIdx, true);
+
+		// Initialize particles through derived class
+		createInitialStochasticStellarPopParticles();
+	}
+
+	if constexpr (Particle_Traits<problem_t>::particle_switch & ParticleSwitch::Test) {
+		AMREX_ASSERT(TestParticles == nullptr);
+
+		// Create particle container
+		TestParticles = std::make_unique<quokka::TestParticleContainer<problem_t>>(this);
+		TestParticles->SetVerbose(0);
+
+		// Register with particle register - Test particles have all features enabled
+		// mass_idx = 0, birth_time_idx = 4, stage_idx = 5, all bool attributes = true
+		particleRegister_.registerStarParticleType(TestParticles.get(), quokka::ParticleType::Test, quokka::TestParticleMassIdx,
+							   quokka::TestParticleLumIdx, quokka::TestParticleBirthTimeIdx, true, true,
+							   quokka::TestParticleStageIdx, true);
+	}
+#endif // AMREX_SPACEDIM == 3
+
+	particleRegister_.redistribute(0);
 }
 #endif
 
@@ -2146,11 +2282,9 @@ template <typename problem_t> auto AMRSimulation<problem_t>::PlotFileMFAtLevel(c
 	int comp = 0;
 	int ncomp_per_dim_fc = 0;
 	int ncomp_tot_fc = 0;
-	int nghost_fc = 0;
 	if constexpr (Physics_Indices<problem_t>::nvarTotal_fc > 0) {
 		ncomp_per_dim_fc = Physics_Indices<problem_t>::nvarPerDim_fc;
 		ncomp_tot_fc = Physics_Indices<problem_t>::nvarTotal_fc;
-		nghost_fc = state_new_fc_[lev][0].nGrow();
 	}
 	const int ncomp_deriv = derivedNames_.size();
 	const int ncomp_plotMF = ncomp_cc + ncomp_tot_fc + ncomp_deriv;
@@ -2285,7 +2419,7 @@ template <typename problem_t> void AMRSimulation<problem_t>::doDiagnostics()
 
 	for (const auto &diag : m_diagnostics) {
 		if (diag->doDiag(tNew_[0], istep[0])) {
-			diag->processDiag(istep[0], tNew_[0], GetVecOfConstPtrs(diagMFVec), m_diagVars);
+			diag->processDiag(istep[0], tNew_[0], GetVecOfConstPtrs(diagMFVec), m_diagVars, simulationMetadata_);
 		}
 	}
 }
@@ -2414,9 +2548,9 @@ template <typename problem_t> void AMRSimulation<problem_t>::WritePlotFile()
 	if (do_tracers != 0) {
 		TracerPC->WritePlotFile(plotfilename, "tracer_particles");
 	}
-	if (do_cic_particles != 0) {
-		CICParticles->WritePlotFile(plotfilename, "CIC_particles");
-	}
+
+	// write all particles in particleRegister_ to plotfile
+	particleRegister_.writePlotFile(plotfilename);
 #endif // AMREX_PARTICLES
 #endif
 }
@@ -2435,25 +2569,16 @@ template <typename problem_t> void AMRSimulation<problem_t>::WriteMetadataFile(s
 			amrex::FileOpenFailed(MetadataFileName);
 		}
 
-		// construct YAML from each (key, value) of simulationMetadata_
-		YAML::Emitter out;
-		out << YAML::BeginMap;
-		auto PrintVisitor = [&out](const auto &t) { out << YAML::Value << t; };
-		for (auto const &[key, value] : simulationMetadata_) {
-			out << YAML::Key << key;
-			std::visit(PrintVisitor, value);
-		}
-		out << YAML::EndMap;
-
 		// write YAML to MetadataFile
-		// (N.B. yaml-cpp is smart enough to emit sufficient digits for
-		//  floating-point types to represent their values to machine precision!)
-		MetadataFile << out.c_str() << '\n';
+		MetadataFile << simulationMetadata_ << '\n';
 	}
 }
 
 template <typename problem_t> void AMRSimulation<problem_t>::ReadMetadataFile(std::string const &chkfilename)
 {
+	fenv_t orig_feenv;
+	feholdexcept(&orig_feenv); // disable FPE for YAML reading
+
 	// read metadata file in on all ranks (needed when restarting from checkpoint)
 	const std::string MetadataFileName(chkfilename + "/metadata.yaml");
 
@@ -2476,6 +2601,8 @@ template <typename problem_t> void AMRSimulation<problem_t>::ReadMetadataFile(st
 			amrex::Print() << fmt::format("\t{} has unknown type! skipping this entry.\n", key);
 		}
 	}
+
+	fesetenv(&orig_feenv); // restore FPE
 }
 
 template <typename problem_t> void AMRSimulation<problem_t>::WriteProjectionPlotfile() const
@@ -2666,9 +2793,9 @@ template <typename problem_t> void AMRSimulation<problem_t>::WriteCheckpointFile
 	if (do_tracers != 0) {
 		TracerPC->Checkpoint(checkpointname, "tracer_particles", true);
 	}
-	if (do_cic_particles != 0) {
-		CICParticles->Checkpoint(checkpointname, "CIC_particles", true);
-	}
+
+	// write all particles in particleRegister_ to checkpoint file
+	particleRegister_.writeCheckpoint(checkpointname, true);
 #endif
 
 	// create symlink and point it at this checkpoint dir
@@ -2832,11 +2959,53 @@ template <typename problem_t> void AMRSimulation<problem_t>::ReadCheckpointFile(
 		TracerPC = std::make_unique<amrex::AmrTracerParticleContainer>(this);
 		TracerPC->Restart(restart_chkfile, "tracer_particles");
 	}
-	if (do_cic_particles != 0) {
+
+	// Initialize and register particle containers from checkpoint file
+
+	if constexpr (Particle_Traits<problem_t>::particle_switch & ParticleSwitch::Rad) {
+		AMREX_ASSERT(RadParticles == nullptr);
+		RadParticles = std::make_unique<quokka::RadParticleContainer<problem_t>>(this);
+		particleRegister_.registerParticleType(RadParticles.get(), quokka::ParticleType::Rad, -1, quokka::RadParticleLumIdx, false,
+						       quokka::RadParticleBirthTimeIdx);
+		RadParticles->Restart(restart_chkfile, particleRegister_.getParticleTypeName(quokka::ParticleType::Rad));
+	}
+
+#if AMREX_SPACEDIM == 3
+	if constexpr (Particle_Traits<problem_t>::particle_switch & ParticleSwitch::CIC) {
 		AMREX_ASSERT(CICParticles == nullptr);
 		CICParticles = std::make_unique<quokka::CICParticleContainer>(this);
-		CICParticles->Restart(restart_chkfile, "CIC_particles");
+		particleRegister_.registerParticleType(CICParticles.get(), quokka::ParticleType::CIC, quokka::CICParticleMassIdx, -1);
+		CICParticles->Restart(restart_chkfile, particleRegister_.getParticleTypeName(quokka::ParticleType::CIC));
 	}
+
+	if constexpr (Particle_Traits<problem_t>::particle_switch & ParticleSwitch::CICRad) {
+		AMREX_ASSERT(CICRadParticles == nullptr);
+		CICRadParticles = std::make_unique<quokka::CICRadParticleContainer<problem_t>>(this);
+		particleRegister_.registerParticleType(CICRadParticles.get(), quokka::ParticleType::CICRad, quokka::CICRadParticleMassIdx,
+						       quokka::CICRadParticleLumIdx, false, quokka::CICRadParticleBirthTimeIdx);
+		CICRadParticles->Restart(restart_chkfile, particleRegister_.getParticleTypeName(quokka::ParticleType::CICRad));
+	}
+
+	if constexpr (Particle_Traits<problem_t>::particle_switch & ParticleSwitch::StochasticStellarPop) {
+		AMREX_ASSERT(StochasticStellarPopParticles == nullptr);
+		const bool StochasticStellarPop_allows_destruction = false;
+		StochasticStellarPopParticles = std::make_unique<quokka::StochasticStellarPopParticleContainer<problem_t>>(this);
+		particleRegister_.registerStarParticleType(StochasticStellarPopParticles.get(), quokka::ParticleType::StochasticStellarPop,
+							   quokka::StochasticStellarPopParticleMassIdx, quokka::StochasticStellarPopParticleLumIdx,
+							   quokka::StochasticStellarPopParticleBirthTimeIdx, true, StochasticStellarPop_allows_destruction,
+							   quokka::StochasticStellarPopParticleStageIdx, true);
+		StochasticStellarPopParticles->Restart(restart_chkfile, particleRegister_.getParticleTypeName(quokka::ParticleType::StochasticStellarPop));
+	}
+
+	if constexpr (Particle_Traits<problem_t>::particle_switch & ParticleSwitch::Test) {
+		AMREX_ASSERT(TestParticles == nullptr);
+		TestParticles = std::make_unique<quokka::TestParticleContainer<problem_t>>(this);
+		particleRegister_.registerStarParticleType(TestParticles.get(), quokka::ParticleType::Test, quokka::TestParticleMassIdx,
+							   quokka::TestParticleLumIdx, quokka::TestParticleBirthTimeIdx, true, true,
+							   quokka::TestParticleStageIdx, true);
+		TestParticles->Restart(restart_chkfile, particleRegister_.getParticleTypeName(quokka::ParticleType::Test));
+	}
+#endif // AMREX_SPACEDIM == 3
 #endif
 
 	areInitialConditionsDefined_ = true;
