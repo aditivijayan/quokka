@@ -283,9 +283,6 @@ void AddSupernova(amrex::MultiFab &mf, amrex::GpuArray<Real, AMREX_SPACEDIM> pro
 					state(i, j, k, HydroSystem<NewProblem>::internalEnergy_index) += rho_eint_blast;
 					state(i, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex) += scalar_blast;
 
-					// printf("The total number of SN gone off=%d\n", cum_sn);
-					Real Rpds = 14. * std::pow(state(i, j, k, HydroSystem<NewProblem>::density_index) / Const_mH, -3. / 7.);
-					// printf("Rpds = %.2e pc\n", Rpds);
 				}
 			}
 				//Add SN1a
@@ -300,10 +297,6 @@ void AddSupernova(amrex::MultiFab &mf, amrex::GpuArray<Real, AMREX_SPACEDIM> pro
 					state(i, j, k, HydroSystem<NewProblem>::energy_index) += rho_eint_blast;
 					state(i, j, k, HydroSystem<NewProblem>::internalEnergy_index) += rho_eint_blast;
 					state(i, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex+1) += scalar_blast;
-
-					// printf("The total number of SN gone off=%d\n", cum_sn);
-					Real Rpds = 14. * std::pow(state(i, j, k, HydroSystem<NewProblem>::density_index) / Const_mH, -3. / 7.);
-					// printf("Rpds (SN1a) = %.2e pc\n", Rpds);
 				}
 			}
 
@@ -323,9 +316,7 @@ void AddSupernova(amrex::MultiFab &mf, amrex::GpuArray<Real, AMREX_SPACEDIM> pro
 					state(i, j, k, HydroSystem<NewProblem>::internalEnergy_index) += Eint;
 					state(i, j, k, Physics_Indices<NewProblem>::pscalarFirstIndex+2) += scalar_blast;
 
-					std::cout << "The total number of SN gone off=%d"<< cum_sn << "\n";
-					Real Rpds = 14. * std::pow(state(i, j, k, HydroSystem<NewProblem>::density_index) / Const_mH, -3. / 7.);
-					// printf("Rpds (AGB) = %.2e pc\n", Rpds);
+					amrex::Print() << "The total number of SN gone off=%d"<< cum_sn << "\n";
 				}
 			}
 
@@ -355,13 +346,6 @@ template <> void QuokkaSimulation<NewProblem>::computeBeforeTimestep()
 	const int count = static_cast<int>(amrex::RandomPoisson(expectation_value));
 	const int count1a = static_cast<int>(amrex::RandomPoisson(expectation_value1a));
 	      int countAGB = static_cast<int>(amrex::RandomPoisson(expectation_valueAGB));
-	//Rechoose countAGB from a Normal Distribution if expectation value >1
-	// const Real sigma = std::sqrt(expectation_valueAGB);
-	if(expectation_valueAGB>1.0 ){
-		// countAGB = static_cast<int>(amrex::RandomNormal(expectation_valueAGB, sigma));
-	}
-
-	printf("Expectation value AGB = %.2e, %d\n", expectation_valueAGB, countAGB);
 
 	// resize particle arrays
 	amrex::Array<int, 1> const lo{0};
@@ -416,14 +400,6 @@ template <> void QuokkaSimulation<NewProblem>::computeBeforeTimestep()
 	auto const &pxAGB = userData_.blast_xAGB->table();
 	auto const &pyAGB = userData_.blast_yAGB->table();
 	auto const &pzAGB = userData_.blast_zAGB->table();
-
-    // printsf("The expectation value is = %.3e\n", expectation_valueAGB);
-	// printf("Count AGB is = %d\n", countAGB);
-
-	// for (int i = 0; i < countAGB; ++i){
-	// 	int pn = static_cast<int>(amrex::RandomPoisson(expectation_valueAGB));
-	// 	printf("Poisson Number = %d, %d \n", i, pn);
-	// }
 
 	for (int i = 0; i < countAGB; ++i) {
 		pxAGB(i) = geom[0].ProbLength(0) * amrex::Random();
