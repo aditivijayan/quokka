@@ -58,14 +58,24 @@ template <typename problem_t> class AdvectionSimulation : public AMRSimulation<p
 	using AMRSimulation<problem_t>::boxArray;
 	using AMRSimulation<problem_t>::DistributionMap;
 
+	using AMRSimulation<problem_t>::max_level;
+	using AMRSimulation<problem_t>::n_error_buf;
+
 	explicit AdvectionSimulation(amrex::Vector<amrex::BCRec> &BCs_cc) : AMRSimulation<problem_t>(BCs_cc) { componentNames_cc_.push_back({"density"}); }
 
 	void computeMaxSignalLocal(int level) override;
-	auto computeExtraPhysicsTimestep(int level) -> amrex::Real override;
+	void printCellProperties(int lev, amrex::IntVect const &index) override;
 	void preCalculateInitialConditions() override;
 	void setInitialConditionsOnGrid(quokka::grid const &grid_elem) override;
 	void setInitialConditionsOnGridFaceVars(quokka::grid const &grid_elem) override;
-	void createInitialParticles() override;
+	void createInitialRadParticles() override;
+#if AMREX_SPACEDIM == 3
+	void createInitialCICParticles() override;
+	void createInitialCICRadParticles() override;
+	void createInitialStochasticStellarPopParticles() override;
+	void createInitialSinkParticles() override;
+	void createInitialTestParticles() override;
+#endif // AMREX_SPACEDIM == 3
 	void advanceSingleTimestepAtLevel(int lev, amrex::Real time, amrex::Real dt_lev, int /*ncycle*/) override;
 	void computeBeforeTimestep() override;
 	void computeAfterTimestep() override;
@@ -86,6 +96,8 @@ template <typename problem_t> class AdvectionSimulation : public AMRSimulation<p
 	void FixupState(int lev) override;
 
 	// tag cells for refinement
+	void refineGrid(int lev, amrex::TagBoxArray &tags, amrex::Real time, int ngrow) override;
+
 	void ErrorEst(int lev, amrex::TagBoxArray &tags, amrex::Real time, int ngrow) override;
 
 	auto computeFluxes(amrex::MultiFab const &consVar, int nvars, int lev) -> std::array<amrex::MultiFab, AMREX_SPACEDIM>;
@@ -115,6 +127,11 @@ template <typename problem_t> void AdvectionSimulation<problem_t>::computeMaxSig
 	}
 }
 
+template <typename problem_t> void AdvectionSimulation<problem_t>::printCellProperties(int lev, amrex::IntVect const &index)
+{
+	// deliberately empty
+}
+
 template <typename problem_t> void AdvectionSimulation<problem_t>::fillPoissonRhsAtLevel(amrex::MultiFab &rhs, int lev)
 {
 	// deliberately empty
@@ -123,12 +140,6 @@ template <typename problem_t> void AdvectionSimulation<problem_t>::fillPoissonRh
 template <typename problem_t> void AdvectionSimulation<problem_t>::applyPoissonGravityAtLevel(amrex::MultiFab const &phi, int lev, amrex::Real dt)
 {
 	// deliberately empty
-}
-
-template <typename problem_t> auto AdvectionSimulation<problem_t>::computeExtraPhysicsTimestep(int const /*level*/) -> amrex::Real
-{
-	// user can override this
-	return std::numeric_limits<amrex::Real>::max();
 }
 
 template <typename problem_t> void AdvectionSimulation<problem_t>::preCalculateInitialConditions()
@@ -150,12 +161,47 @@ template <typename problem_t> void AdvectionSimulation<problem_t>::setInitialCon
 	// note: an implementation is only required if face-centered vars are used
 }
 
-template <typename problem_t> void AdvectionSimulation<problem_t>::createInitialParticles()
+template <typename problem_t> void AdvectionSimulation<problem_t>::createInitialRadParticles()
 {
 	// default empty implementation
 	// user should implement using problem-specific template specialization
-	// note: an implementation is only required if particles are used
+	// note: an implementation is only required if Rad particles are used
 }
+
+#if AMREX_SPACEDIM == 3
+
+template <typename problem_t> void AdvectionSimulation<problem_t>::createInitialCICParticles()
+{
+	// default empty implementation
+	// user should implement using problem-specific template specialization
+	// note: an implementation is only required if CIC particles are used
+}
+
+template <typename problem_t> void AdvectionSimulation<problem_t>::createInitialCICRadParticles()
+{
+	// default empty implementation
+	// user should implement using problem-specific template specialization
+	// note: an implementation is only required if CICRad particles are used
+}
+
+template <typename problem_t> void AdvectionSimulation<problem_t>::createInitialStochasticStellarPopParticles()
+{
+	// Optional implementation
+	// note: an implementation is only effective if StochasticStellarPop particles are used
+}
+
+template <typename problem_t> void AdvectionSimulation<problem_t>::createInitialSinkParticles()
+{
+	// Optional implementation
+	// note: an implementation is only effective if Sink particles are used
+}
+
+template <typename problem_t> void AdvectionSimulation<problem_t>::createInitialTestParticles()
+{
+	// Optional implementation
+	// note: an implementation is only effective if Test particles are used
+}
+#endif // AMREX_SPACEDIM == 3
 
 template <typename problem_t> void AdvectionSimulation<problem_t>::computeBeforeTimestep()
 {
@@ -185,9 +231,16 @@ template <typename problem_t> auto AdvectionSimulation<problem_t>::ComputeStatis
 	return std::map<std::string, amrex::Real>{};
 }
 
-template <typename problem_t> void AdvectionSimulation<problem_t>::ErrorEst(int lev, amrex::TagBoxArray &tags, amrex::Real /*time*/, int /*ngrow*/)
+template <typename problem_t> void AdvectionSimulation<problem_t>::refineGrid(int /*lev*/, amrex::TagBoxArray & /*tags*/, amrex::Real /*time*/, int /*ngrow*/)
 {
-	// tag cells for refinement -- implement in problem generator
+	// default empty implementation
+	// user should implement using problem-specific template specialization
+}
+
+template <typename problem_t> void AdvectionSimulation<problem_t>::ErrorEst(int lev, amrex::TagBoxArray &tags, amrex::Real time, int ngrow)
+{
+	// call user-defined RefineGrid to set tags
+	refineGrid(lev, tags, time, ngrow);
 }
 
 template <typename problem_t> void AdvectionSimulation<problem_t>::FixupState(int lev)

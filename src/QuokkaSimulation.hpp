@@ -9,8 +9,18 @@
 /// \brief Implements classes and functions to organise the overall setup,
 /// timestepping, solving, and I/O of a simulation for radiation moments.
 
+#include "hydro/EOS.hpp"
 #include <array>
+#include <iostream>
+#if __has_include(<filesystem>)
 #include <filesystem>
+#elif __has_include(<experimental/filesystem>)
+#include <experimental/filesystem>
+namespace std
+{
+namespace filesystem = experimental::filesystem;
+}
+#endif
 #include <limits>
 #include <string>
 #include <tuple>
@@ -70,6 +80,7 @@ template <typename problem_t> class QuokkaSimulation : public AMRSimulation<prob
 	using AMRSimulation<problem_t>::state_old_fc_;
 	using AMRSimulation<problem_t>::state_new_fc_;
 	using AMRSimulation<problem_t>::TracerPC;
+	using AMRSimulation<problem_t>::particleRegister_;
 
 	using AMRSimulation<problem_t>::nghost_cc_;
 	using AMRSimulation<problem_t>::areInitialConditionsDefined_;
@@ -104,6 +115,9 @@ template <typename problem_t> class QuokkaSimulation : public AMRSimulation<prob
 
 	using AMRSimulation<problem_t>::densityFloor_;
 	using AMRSimulation<problem_t>::tempFloor_;
+
+	using AMRSimulation<problem_t>::max_level;
+	using AMRSimulation<problem_t>::n_error_buf;
 
 	SimulationData<problem_t> userData_;
 
@@ -173,11 +187,19 @@ template <typename problem_t> class QuokkaSimulation : public AMRSimulation<prob
 
 	void checkHydroStates(amrex::MultiFab &mf, char const *file, int line);
 	void computeMaxSignalLocal(int level) override;
-	auto computeExtraPhysicsTimestep(int lev) -> amrex::Real override;
+	void printCellProperties(int lev, amrex::IntVect const &index) override;
 	void preCalculateInitialConditions() override;
 	void setInitialConditionsOnGrid(quokka::grid const &grid_elem) override;
 	void setInitialConditionsOnGridFaceVars(quokka::grid const &grid_elem) override;
-	void createInitialParticles() override;
+	void refineGrid(int lev, amrex::TagBoxArray &tags, amrex::Real time, int ngrow) override;
+	void createInitialRadParticles() override;
+#if AMREX_SPACEDIM == 3
+	void createInitialCICParticles() override;
+	void createInitialCICRadParticles() override;
+	void createInitialStochasticStellarPopParticles() override;
+	void createInitialSinkParticles() override;
+	void createInitialTestParticles() override;
+#endif // AMREX_SPACEDIM == 3
 	void advanceSingleTimestepAtLevel(int lev, amrex::Real time, amrex::Real dt_lev, int ncycle) override;
 	void computeBeforeTimestep() override;
 	void computeAfterTimestep() override;
@@ -250,10 +272,6 @@ template <typename problem_t> class QuokkaSimulation : public AMRSimulation<prob
 	void subcycleRadiationAtLevel(int lev, amrex::Real time, amrex::Real dt_lev_hydro, amrex::YAFluxRegister *fr_as_crse,
 				      amrex::YAFluxRegister *fr_as_fine);
 
-	void operatorSplitSourceTerms(amrex::Array4<amrex::Real> const &stateNew, const amrex::Box &indexRange, amrex::Real time, double dt, int stage,
-				      amrex::GpuArray<amrex::Real, AMREX_SPACEDIM> const &dx, amrex::GpuArray<amrex::Real, AMREX_SPACEDIM> const &prob_lo,
-				      amrex::GpuArray<amrex::Real, AMREX_SPACEDIM> const &prob_hi, int *p_iteration_counter, int *p_iteration_failure_counter);
-
 	auto computeRadiationFluxes(amrex::Array4<const amrex::Real> const &consVar, const amrex::Box &indexRange, int nvars,
 				    amrex::GpuArray<amrex::Real, AMREX_SPACEDIM> dx)
 	    -> std::tuple<std::array<amrex::FArrayBox, AMREX_SPACEDIM>, std::array<amrex::FArrayBox, AMREX_SPACEDIM>>;
@@ -279,7 +297,24 @@ template <typename problem_t> class QuokkaSimulation : public AMRSimulation<prob
 
 	void replaceFluxes(std::array<amrex::MultiFab, AMREX_SPACEDIM> &fluxes, std::array<amrex::MultiFab, AMREX_SPACEDIM> &FOfluxes,
 			   amrex::iMultiFab &redoFlag);
+
+	// void PrintRadEnergySource(amrex::MultiFab const &radEnergySource);
 };
+
+// For debugging only; will be removed on release
+// template <typename problem_t> void QuokkaSimulation<problem_t>::PrintRadEnergySource(amrex::MultiFab const &radEnergySource)
+// {
+// 	amrex::Print() << "radEnergySource_arr.data() = ";
+// 	for (amrex::MFIter iter(radEnergySource); iter.isValid(); ++iter) {
+// 		const amrex::Box &indexRange = iter.validbox();
+// 		auto const &radEnergySource_arr = radEnergySource.array(iter);
+// 		amrex::ParallelFor(indexRange, [=] AMREX_GPU_DEVICE(int i, int j, int k) {
+// 			if (j == 16) {
+// 				std::cout << radEnergySource_arr(i, j, k) << ", ";
+// 			}
+// 		});
+// 	}
+// }
 
 template <typename problem_t> void QuokkaSimulation<problem_t>::defineComponentNames()
 {
@@ -328,25 +363,25 @@ template <typename problem_t> void AMRSimulation<problem_t>::initializeSimulatio
 		// if unit system is CONSTANTS, the units are not well defined unless all four constants, G, k_B, c, and a_rad, are defined. However, in a hydro
 		// simulation, only k_B is defined. In a radiation-hydrodynamics simulation, only k_B, c, and a_rad are defined. Besides, CONSTANTS is only used
 		// for testing purposes, so we don't care about the units in that case.
-		simulationMetadata_["unit_length"] = NAN;
-		simulationMetadata_["unit_mass"] = NAN;
-		simulationMetadata_["unit_time"] = NAN;
-		simulationMetadata_["unit_temperature"] = NAN;
+		simulationMetadata_["units"]["unit_length"] = NAN;
+		simulationMetadata_["units"]["unit_mass"] = NAN;
+		simulationMetadata_["units"]["unit_time"] = NAN;
+		simulationMetadata_["units"]["unit_temperature"] = NAN;
 
 		// constants
-		simulationMetadata_["k_B"] = Physics_Traits<problem_t>::boltzmann_constant;
-		simulationMetadata_["G"] = Physics_Traits<problem_t>::gravitational_constant;
+		simulationMetadata_["constants"]["k_B"] = Physics_Traits<problem_t>::boltzmann_constant;
+		simulationMetadata_["constants"]["G"] = Physics_Traits<problem_t>::gravitational_constant;
 		if constexpr (Physics_Traits<problem_t>::is_radiation_enabled) {
-			simulationMetadata_["c"] = Physics_Traits<problem_t>::c_light;
-			simulationMetadata_["c_hat"] = Physics_Traits<problem_t>::c_light * RadSystem_Traits<problem_t>::c_hat_over_c;
-			simulationMetadata_["a_rad"] = Physics_Traits<problem_t>::radiation_constant;
+			simulationMetadata_["constants"]["c"] = Physics_Traits<problem_t>::c_light;
+			simulationMetadata_["constants"]["c_hat"] = Physics_Traits<problem_t>::c_light * RadSystem_Traits<problem_t>::c_hat_over_c;
+			simulationMetadata_["constants"]["a_rad"] = Physics_Traits<problem_t>::radiation_constant;
 		}
 	} else {
 		// units
-		simulationMetadata_["unit_length"] = unit_length;
-		simulationMetadata_["unit_mass"] = unit_mass;
-		simulationMetadata_["unit_time"] = unit_time;
-		simulationMetadata_["unit_temperature"] = unit_temperature;
+		simulationMetadata_["units"]["unit_length"] = unit_length;
+		simulationMetadata_["units"]["unit_mass"] = unit_mass;
+		simulationMetadata_["units"]["unit_time"] = unit_time;
+		simulationMetadata_["units"]["unit_temperature"] = unit_temperature;
 
 		// constants
 		double k_B = NAN;
@@ -358,12 +393,12 @@ template <typename problem_t> void AMRSimulation<problem_t>::initializeSimulatio
 			      (Physics_Traits<problem_t>::unit_length * Physics_Traits<problem_t>::unit_length * Physics_Traits<problem_t>::unit_mass /
 			       (Physics_Traits<problem_t>::unit_time * Physics_Traits<problem_t>::unit_time) / Physics_Traits<problem_t>::unit_temperature);
 		}
-		simulationMetadata_["k_B"] = k_B;
-		simulationMetadata_["G"] = Gconst_;
+		simulationMetadata_["constants"]["k_B"] = k_B;
+		simulationMetadata_["constants"]["G"] = Gconst_;
 		if constexpr (Physics_Traits<problem_t>::is_radiation_enabled) {
-			simulationMetadata_["c"] = RadSystem<problem_t>::c_light_;
-			simulationMetadata_["c_hat"] = RadSystem<problem_t>::c_hat_;
-			simulationMetadata_["a_rad"] = RadSystem<problem_t>::radiation_constant_;
+			simulationMetadata_["constants"]["c"] = RadSystem<problem_t>::c_light_;
+			simulationMetadata_["constants"]["c_hat"] = RadSystem<problem_t>::c_hat_;
+			simulationMetadata_["constants"]["a_rad"] = RadSystem<problem_t>::radiation_constant_;
 		}
 	}
 }
@@ -487,11 +522,31 @@ template <typename problem_t> void QuokkaSimulation<problem_t>::computeMaxSignal
 	}
 }
 
-template <typename problem_t> auto QuokkaSimulation<problem_t>::computeExtraPhysicsTimestep(int const /*level*/) -> amrex::Real
+template <typename problem_t> void QuokkaSimulation<problem_t>::printCellProperties(int lev, amrex::IntVect const &index)
 {
-	BL_PROFILE("QuokkaSimulation::computeExtraPhysicsTimestep()");
-	// users can override this to enforce additional timestep constraints
-	return std::numeric_limits<amrex::Real>::max();
+	// print density, velocity magnitude, temperature, adiabatic sound speed
+	amrex::Vector<amrex::Real> cell_values = amrex::get_cell_data(state_new_cc_[lev], index);
+
+	// cell_values is *only* filled on the MPI rank that holds the box with this cell
+	// (NOTE: for Cray MPICH, standard output is NOT ordered with respect to different ranks.)
+	if (!cell_values.empty()) {
+		const amrex::Real rho = cell_values[HydroSystem<problem_t>::density_index];
+		const amrex::Real px1 = cell_values[HydroSystem<problem_t>::x1Momentum_index];
+		const amrex::Real px2 = cell_values[HydroSystem<problem_t>::x2Momentum_index];
+		const amrex::Real px3 = cell_values[HydroSystem<problem_t>::x3Momentum_index];
+		const amrex::Real Etot = cell_values[HydroSystem<problem_t>::energy_index];
+		const amrex::Real vx1 = px1 / rho;
+		const amrex::Real vx2 = px2 / rho;
+		const amrex::Real vx3 = px3 / rho;
+		const amrex::Real vsq = (vx1 * vx1) + (vx2 * vx2) + (vx3 * vx3);
+		const amrex::Real vel_mag = std::sqrt(vsq);
+		const amrex::Real Ekin = 0.5 * rho * vsq;
+		const amrex::Real Eint = Etot - Ekin;
+		const amrex::Real P = quokka::EOS<problem_t>::ComputePressure(rho, Eint);
+		const amrex::Real cs = quokka::EOS<problem_t>::ComputeSoundSpeed(rho, P);
+
+		amrex::AllPrint() << fmt::format("...[level {}] \tcell density = {:e}, |v| = {:e}, cs = {:e}\n", lev, rho, vel_mag, cs);
+	}
 }
 
 #if !defined(NDEBUG)
@@ -535,12 +590,53 @@ template <typename problem_t> void QuokkaSimulation<problem_t>::setInitialCondit
 	// note: an implementation is only required if face-centered vars are used
 }
 
-template <typename problem_t> void QuokkaSimulation<problem_t>::createInitialParticles()
+template <typename problem_t> void QuokkaSimulation<problem_t>::createInitialRadParticles()
 {
 	// default empty implementation
 	// user should implement using problem-specific template specialization
-	// note: an implementation is only required if particles are used
+	// note: an implementation is only required if Rad_particles are used
 }
+
+#if AMREX_SPACEDIM == 3
+
+template <typename problem_t> void QuokkaSimulation<problem_t>::createInitialCICParticles()
+{
+	// default empty implementation
+	// user should implement using problem-specific template specialization
+	// note: an implementation is only required if CIC_particles are used
+}
+
+template <typename problem_t> void QuokkaSimulation<problem_t>::createInitialCICRadParticles()
+{
+	// default empty implementation
+	// user should implement using problem-specific template specialization
+	// note: an implementation is only required if CICRad_particles are used
+}
+
+template <typename problem_t> void QuokkaSimulation<problem_t>::createInitialStochasticStellarPopParticles()
+{
+	// Optional implementation
+	// StochasticStellarPop particles are created on-the-fly from fluid cells. The user can optionally implement this function to create particles at the
+	// beginning of the simulation.
+	// note: an implementation is only effective if StochasticStellarPop_particles are used
+}
+
+template <typename problem_t> void QuokkaSimulation<problem_t>::createInitialSinkParticles()
+{
+	// Optional implementation
+	// Sink particles are created on-the-fly from fluid cells. The user can optionally implement this function to create particles at the
+	// beginning of the simulation.
+	// note: an implementation is only effective if Sink_particles are used
+}
+
+template <typename problem_t> void QuokkaSimulation<problem_t>::createInitialTestParticles()
+{
+	// Optional implementation
+	// Test particles are created on-the-fly from fluid cells. The user can optionally implement this function to create particles at the
+	// beginning of the simulation.
+	// note: an implementation is only effective if Test_particles are used
+}
+#endif // AMREX_SPACEDIM == 3
 
 template <typename problem_t> void QuokkaSimulation<problem_t>::computeBeforeTimestep()
 {
@@ -613,9 +709,23 @@ template <typename problem_t> auto QuokkaSimulation<problem_t>::ComputeStatistic
 	return std::map<std::string, amrex::Real>{};
 }
 
-template <typename problem_t> void QuokkaSimulation<problem_t>::ErrorEst(int lev, amrex::TagBoxArray &tags, amrex::Real /*time*/, int /*ngrow*/)
+template <typename problem_t> void QuokkaSimulation<problem_t>::refineGrid(int /*lev*/, amrex::TagBoxArray & /*tags*/, amrex::Real /*time*/, int /*ngrow*/)
 {
-	// tag cells for refinement -- user should implement
+	// default empty implementation
+	// user should implement using problem-specific template specialization
+}
+
+template <typename problem_t> void QuokkaSimulation<problem_t>::ErrorEst(int lev, amrex::TagBoxArray &tags, amrex::Real time, int ngrow)
+{
+	// call user-defined RefineGrid to set tags
+	refineGrid(lev, tags, time, ngrow);
+
+#if AMREX_SPACEDIM == 3
+	// refine grids around particles
+	if (lev < max_level) {
+		particleRegister_.refineGridsAroundParticles(lev, tags, time, ngrow, n_error_buf[lev]);
+	}
+#endif
 }
 
 template <typename problem_t>
@@ -1676,19 +1786,55 @@ void QuokkaSimulation<problem_t>::subcycleRadiationAtLevel(int lev, amrex::Real 
 		int *p_iteration_failure_counter = iteration_failure_counter.data();
 		int *p_iteration_counter = iteration_counter.data();
 
+		// Create a MultiFab to hold radEnergySource for the current AMR level
+		int const nghost = 1; // depositRadiation needs 1 ghost cell
+		amrex::MultiFab radEnergySource(grids[lev], dmap[lev], Physics_Traits<problem_t>::nGroups, nghost);
+
 		if constexpr (IMEX_a22 > 0.0) {
 			// matter-radiation exchange source terms of stage 1
+
+			radEnergySource.setVal(0.0); // Initialize the MultiFab to zero
+
+#ifdef AMREX_PARTICLES
+			// for debugging, print the radEnergySource array
+			// if (i == 0) {
+			// 	amrex::Print() << "Initial,              ";
+			// 	PrintRadEnergySource(radEnergySource);
+			// 	amrex::Print() << "\n";
+			// }
+
+			// Deposit radiation from all particles that have luminosity. When there are no particles with luminosity, this will do nothing.
+			particleRegister_.depositRadiation(radEnergySource, lev, time_subcycle);
+
+			// for debugging, print the radEnergySource array
+			// if (i == 0) {
+			// 	amrex::Print() << "after ParticleToMesh: ";
+			// 	PrintRadEnergySource(radEnergySource);
+			// 	amrex::Print() << "\n";
+			// }
+#endif
 
 			for (amrex::MFIter iter(state_new_cc_[lev]); iter.isValid(); ++iter) {
 				const amrex::Box &indexRange = iter.validbox();
 				auto const &stateNew = state_new_cc_[lev].array(iter);
 				auto const &prob_lo = geom[lev].ProbLoArray();
 				auto const &prob_hi = geom[lev].ProbHiArray();
+
+				auto const &radEnergySource_arr = radEnergySource.array(iter);
+				RadSystem<problem_t>::SetRadEnergySource(radEnergySource_arr, indexRange, dx, prob_lo, prob_hi, time_subcycle + dt_radiation);
+
 				// update state_new_cc_[lev] in place (updates both radiation and hydro vars)
 				// Note that only a fraction (IMEX_a32) of the matter-radiation exchange source terms are added to hydro. This ensures that the
 				// hydro properties get to t + IMEX_a32 dt in terms of matter-radiation exchange.
-				operatorSplitSourceTerms(stateNew, indexRange, time_subcycle, dt_radiation, 1, dx, prob_lo, prob_hi, p_iteration_counter,
-							 p_iteration_failure_counter);
+				if constexpr (Physics_Traits<problem_t>::nGroups <= 1) {
+					RadSystem<problem_t>::AddSourceTermsSingleGroup(stateNew, radEnergySource_arr, indexRange, dt_radiation, 1,
+											dustGasInteractionCoeff_, p_iteration_counter,
+											p_iteration_failure_counter);
+				} else {
+					RadSystem<problem_t>::AddSourceTermsMultiGroup(stateNew, radEnergySource_arr, indexRange, dt_radiation, 1,
+										       dustGasInteractionCoeff_, p_iteration_counter,
+										       p_iteration_failure_counter);
+				}
 			}
 		}
 
@@ -1698,15 +1844,31 @@ void QuokkaSimulation<problem_t>::subcycleRadiationAtLevel(int lev, amrex::Real 
 		// new radiation state is stored in state_new_cc_
 		// new hydro state is stored in state_new_cc_ (always the case during radiation update)
 
+		radEnergySource.setVal(0.0); // Initialize the MultiFab to zero
+
+#ifdef AMREX_PARTICLES
+		// Deposit radiation from particles into radEnergySource. When there are no particles with luminosity, this will do nothing.
+		particleRegister_.depositRadiation(radEnergySource, lev, time_subcycle);
+#endif
+
 		// Add the matter-radiation exchange source terms to the radiation subsystem and evolve by (1 - IMEX_a32) * dt
 		for (amrex::MFIter iter(state_new_cc_[lev]); iter.isValid(); ++iter) {
 			const amrex::Box &indexRange = iter.validbox();
 			auto const &stateNew = state_new_cc_[lev].array(iter);
 			auto const &prob_lo = geom[lev].ProbLoArray();
 			auto const &prob_hi = geom[lev].ProbHiArray();
-			// update state_new_cc_[lev] in place (updates both radiation and hydro vars)
-			operatorSplitSourceTerms(stateNew, indexRange, time_subcycle, dt_radiation, 2, dx, prob_lo, prob_hi, p_iteration_counter,
-						 p_iteration_failure_counter);
+
+			auto const &radEnergySource_arr = radEnergySource.array(iter);
+			RadSystem<problem_t>::SetRadEnergySource(radEnergySource_arr, indexRange, dx, prob_lo, prob_hi, time_subcycle + dt_radiation);
+
+			// include cell-centered source terms; will update state_new_cc_[lev] in place (updates both radiation and hydro vars)
+			if constexpr (Physics_Traits<problem_t>::nGroups <= 1) {
+				RadSystem<problem_t>::AddSourceTermsSingleGroup(stateNew, radEnergySource_arr, indexRange, dt_radiation, 2,
+										dustGasInteractionCoeff_, p_iteration_counter, p_iteration_failure_counter);
+			} else {
+				RadSystem<problem_t>::AddSourceTermsMultiGroup(stateNew, radEnergySource_arr, indexRange, dt_radiation, 2,
+									       dustGasInteractionCoeff_, p_iteration_counter, p_iteration_failure_counter);
+			}
 		}
 
 		if (print_rad_counter_) {
@@ -1905,31 +2067,6 @@ void QuokkaSimulation<problem_t>::advanceRadiationMidpointRK2(int lev, amrex::Re
 			auto expandedFluxes = expandFluxArrays(fluxArrays, nstartHyperbolic_, state_new_cc_[lev].nComp());
 			incrementFluxRegisters(iter, fr_as_crse, fr_as_fine, expandedFluxes, lev, 0.5 * dt_radiation);
 		}
-	}
-}
-
-template <typename problem_t>
-void QuokkaSimulation<problem_t>::operatorSplitSourceTerms(amrex::Array4<amrex::Real> const &stateNew, const amrex::Box &indexRange, const amrex::Real time,
-							   const double dt, const int stage, amrex::GpuArray<amrex::Real, AMREX_SPACEDIM> const &dx,
-							   amrex::GpuArray<amrex::Real, AMREX_SPACEDIM> const &prob_lo,
-							   amrex::GpuArray<amrex::Real, AMREX_SPACEDIM> const &prob_hi, int *p_iteration_counter,
-							   int *p_iteration_failure_counter)
-{
-	amrex::FArrayBox radEnergySource(indexRange, Physics_Traits<problem_t>::nGroups,
-					 amrex::The_Async_Arena()); // cell-centered scalar
-
-	radEnergySource.setVal<amrex::RunOn::Device>(0.);
-
-	// cell-centered radiation energy source
-	RadSystem<problem_t>::SetRadEnergySource(radEnergySource.array(), indexRange, dx, prob_lo, prob_hi, time + dt);
-
-	// cell-centered source terms
-	if constexpr (Physics_Traits<problem_t>::nGroups <= 1) {
-		RadSystem<problem_t>::AddSourceTermsSingleGroup(stateNew, radEnergySource.const_array(), indexRange, dt, stage, dustGasInteractionCoeff_,
-								p_iteration_counter, p_iteration_failure_counter);
-	} else {
-		RadSystem<problem_t>::AddSourceTermsMultiGroup(stateNew, radEnergySource.const_array(), indexRange, dt, stage, dustGasInteractionCoeff_,
-							       p_iteration_counter, p_iteration_failure_counter);
 	}
 }
 

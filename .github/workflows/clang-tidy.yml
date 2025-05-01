@@ -12,12 +12,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       with:
         submodules: true
         fetch-depth: 0
 
-    - uses: ZedThree/clang-tidy-review@v0.20.1
+    - uses: ZedThree/clang-tidy-review@4ea7f7b72e7e039588ef5e64de9a845e5a3f8db5 # v0.21.0
       id: review
       with:
         config_file: src/.clang-tidy
@@ -27,7 +27,7 @@ jobs:
         split_workflow: true
 
     # Uploads an artefact containing clang_fixes.json
-    - uses: ZedThree/clang-tidy-review/upload@v0.20.1
+    - uses: ZedThree/clang-tidy-review/upload@4ea7f7b72e7e039588ef5e64de9a845e5a3f8db5 # v0.21.0
 
     # If there are any comments, fail the check
     - if: steps.review.outputs.total_comments > 0

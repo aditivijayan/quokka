@@ -17,7 +17,7 @@ module load cce/18.0.1
 module load cray-hdf5
 
 # adios2 (optional)
-# module load adios2/2.10.2-hdf5
+module load adios2/2.10.2-hdf5
 
 # python
 module load cray-python/3.11.7
