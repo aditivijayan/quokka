@@ -430,7 +430,7 @@ template <> void QuokkaSimulation<NewProblem>::ComputeDerivedVar(int lev, std::s
 	// compute derived variables and save in 'mf'
 	if (dname == "temperature") {
 		const int ncomp = ncomp_cc_in;
-		auto tables = grackleTables_.const_tables();
+		auto tables = resampledTables_.const_tables();
 
 		for (amrex::MFIter iter(mf); iter.isValid(); ++iter) {
 			const amrex::Box &indexRange = iter.validbox();
@@ -444,7 +444,7 @@ template <> void QuokkaSimulation<NewProblem>::ComputeDerivedVar(int lev, std::s
 				Real const x3Mom = state(i, j, k, HydroSystem<NewProblem>::x3Momentum_index);
 				Real const Egas = state(i, j, k, HydroSystem<NewProblem>::energy_index);
 				Real const Eint = RadSystem<NewProblem>::ComputeEintFromEgas(rho, x1Mom, x2Mom, x3Mom, Egas);
-				Real const Tgas = ComputeTgasFromEgas(rho, Eint, HydroSystem<NewProblem>::gamma_, tables);
+				Real const Tgas = ComputeTgasFromEgas(rho, Eint, tables);
 
 				output(i, j, k, ncomp) = Tgas;
 			});
