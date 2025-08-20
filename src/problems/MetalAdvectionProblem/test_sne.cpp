@@ -29,7 +29,7 @@
 // global variables needed for Dirichlet boundary condition and initial conditions
 
 
-#############----Values for R4 Model-------################
+//#############----Values for R4 Model-------################
 
 AMREX_GPU_MANAGED amrex::GpuArray<amrex::Real, 64> logphi_data{3.24975864, 6.27954616, 6.8675804 , 7.2142687 , 7.46059677,
        7.65149496, 7.80718072, 7.93849124, 8.05191629, 8.15165531,
