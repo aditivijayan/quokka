@@ -3,12 +3,12 @@
 # *****************************************************************
 geometry.prob_lo     =  -3.0e18 -3.0e18 -3.0e18
 geometry.prob_hi     =  3.0e18 3.0e18 3.0e18
-geometry.is_periodic =  0    0    0
+quokka.bc = reflecting reflecting reflecting
 
 # *****************************************************************
 # VERBOSITY
 # *****************************************************************
-amr.v              = 1       # verbosity in Amr
+amr.v              = 0       # verbosity in Amr
 
 # *****************************************************************
 # Resolution and refinement
@@ -24,13 +24,15 @@ do_reflux = 0
 do_subcycle = 0
 suppress_output = 0
 
-particles.verbose = 1
+particles.verbose = 0
 particles.disable_SN_feedback = true
+particles.rad_table = ../inputs/lum_demo_2groups.csv
+particles.rad_table_output_spacing = linear
 
 stop_time = 8.0e20
-max_timesteps = 4
-plotfile_interval = 4
-particle_csv_interval = 4
+initial_dt = 3.15576e6
+max_timesteps = 3
+plotfile_interval = -1
 checkpoint_interval = -1
 
 tiny_profiler.enabled = 0

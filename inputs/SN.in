@@ -3,7 +3,7 @@
 # *****************************************************************
 geometry.prob_lo     =  -3.949667304e+20 -3.949667304e+20 -3.949667304e+20
 geometry.prob_hi     =  3.949667304e+20 3.949667304e+20 3.949667304e+20
-geometry.is_periodic =  1    1    1
+quokka.bc = reflecting reflecting reflecting
 
 # *****************************************************************
 # VERBOSITY
@@ -39,5 +39,10 @@ particles.SN_scheme = SN_thermal_or_thermal_momentum
 particles.verbose = 1
 
 max_timesteps = 10
+initial_dt = 3.15576e4
 plotfile_interval = -1
 checkpoint_interval = -1
+
+#temperature_floor = 10
+density_floor = 1e-26
+signal_speed_abort = 4e8
